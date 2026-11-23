@@ -77,7 +77,7 @@ class JanuarySettlementTests(unittest.TestCase):
         book = engine.result.ledger
         book.buy(dec, 1, D(1), D(100), D(0))
         engine.advance(ex, market({1: D(100)}, CorporateAction("div", 1, "CASH_DIVIDEND", D(10))), (), {}, ())
-        # 划款后只剩 17.62 元。一笔 18 元的买单失败时，税款随整日一起回滚。
+        # Only 17.62 is left after the transfer. When an 18 buy order fails, the tax payment rolls back with the whole day.
         prices = market({1: D(100), 2: D(18)})
         with self.assertRaisesRegex(ValueError, "available cash"):
             engine.advance(jan, prices, [Order(2, 1, {})], {}, ())
@@ -108,7 +108,7 @@ class JanuarySettlementTests(unittest.TestCase):
             self.assertEqual((book.cash, engine.result.history[-1].daily_return), (D("964.48"), 0))
             orders = [Order(1, 1, {})]
             if short_of_cash:
-                # 留下 4.48 元，无法归还 12.24 元。次日拟卖出的股票不可垫付。
+                # 4.48 is left, which cannot repay 12.24. Stock planned for sale the next day cannot be used to fund it.
                 orders.append(Order(2, 1, {}))
                 prices = market({1: D(20), 2: D(940)})
             engine.advance(buy, prices, orders, {}, ())

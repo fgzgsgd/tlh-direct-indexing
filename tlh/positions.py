@@ -1,4 +1,4 @@
-"""读取和保存逐日权重及选批指令。日期为生效交易日，股数单位以信号日为准。"""
+"""Read and save daily weights and lot-selection orders. Dates are effective trading days; shares are in signal-day units."""
 
 import csv
 from collections.abc import Mapping
@@ -26,7 +26,7 @@ def _read_sell_lots(cell: str) -> dict[int, Decimal]:
 
 
 def read_weights(path: Path) -> dict[date, Target]:
-    """每天一份完整截面；消失的正权重须显式归零，避免缺行引起误卖。"""
+    """One full cross-section per day; positive weights that disappear must be set to zero explicitly so missing rows do not trigger sales."""
     result: dict[date, Target] = {}
     with crsp_table(path) as rows:
         if not set(WEIGHT_COLUMNS).issubset(rows.fieldnames):
@@ -41,7 +41,7 @@ def read_weights(path: Path) -> dict[date, Target]:
             if target.rebalance != (flag == "1"):
                 raise ValueError(f"{day}: inconsistent rebalance flag.")
             cell = row.get("sell_lots") or ""
-            if not row["permno"]:  # 全现金日也有日期和调仓标记。
+            if not row["permno"]:  # All-cash days also have a date and a rebalance flag.
                 if weight != 0 or cell:
                     raise ValueError(f"{day}: a row without PERMNO requires zero weight and no sell_lots.")
                 continue
@@ -59,7 +59,7 @@ def read_weights(path: Path) -> dict[date, Target]:
     for day, target in sorted(result.items()):
         if missing := previous.difference(target.weights):
             raise ValueError(f"{day}: missing carried weights; specify zero to exit {sorted(missing)}.")
-        # 比对时忽略显式的零，0.5 和 0.500 也是同一权重。
+        # Ignore explicit zeros when comparing; 0.5 and 0.500 are the same weight.
         active = target.active_weights(day)
         result[day] = Target(active, target.rebalance, target.sell_lots)
         previous = set(active)
@@ -67,7 +67,7 @@ def read_weights(path: Path) -> dict[date, Target]:
 
 
 def write_weights(path: Path, targets: Mapping[date, Target]) -> None:
-    """将 run().targets 写为一份 CSV，包括未成交卖单在信号日锁定的分配。"""
+    """Write run().targets to one CSV, including the allocations locked on the signal day for unfilled sell orders."""
     if path.suffix.lower() in {".gz", ".zip"}:
         raise ValueError("Write weights to a plain CSV file.")
     previous: set[int] = set()

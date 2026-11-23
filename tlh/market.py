@@ -1,4 +1,4 @@
-"""读取 WRDS 导出的 CRSP CIZ 个股日数据。"""
+"""Read CRSP CIZ daily stock data exported from WRDS."""
 
 import argparse
 import csv
@@ -17,7 +17,7 @@ from zipfile import ZipFile
 
 @contextmanager
 def crsp_table(path: Path) -> Iterator[csv.DictReader]:
-    """读取 CSV、压缩 CSV 或单表 ZIP。列名统一为小写，数值原样保留。"""
+    """Read a CSV, compressed CSV or single-table ZIP. Column names are lowercased and values kept as is."""
     with ExitStack() as files:
         if path.suffix.lower() == ".zip":
             archive = files.enter_context(ZipFile(path))
@@ -34,7 +34,7 @@ def crsp_table(path: Path) -> Iterator[csv.DictReader]:
 
 @cache
 def nyse_trading_days() -> tuple[date, ...]:
-    """项目已核实的 NYSE 交易日历，独立于任何一次回测的起止日。"""
+    """The project's verified NYSE trading calendar, independent of any backtest's start and end dates."""
     path = Path(__file__).resolve().parents[1] / "data/market/sp500_observed_trading_dates.csv"
     with crsp_table(path) as rows:
         return tuple(date.fromisoformat(row["trading_date"]) for row in rows)
@@ -45,7 +45,7 @@ def last_trading_day_of_year(year: int) -> date:
     calendar = nyse_trading_days()
     if calendar[0] <= year_end <= calendar[-1]:
         return calendar[bisect_right(calendar, year_end) - 1]
-    # 日历尚未覆盖年底时，仅跳过确定休市的周末，避免把文件末行误作全年结束。
+    # If the calendar does not yet cover year-end, skip only weekends, which are certain closures, so the file's last row is not mistaken for the end of the year.
     return year_end - timedelta(days=max(0, year_end.weekday() - 4))
 
 
@@ -64,7 +64,7 @@ class StockDay:
 
 
 def read_crsp_daily(path: Path, *, require_prices: bool) -> Iterator[StockDay]:
-    """DlyRet 含分配，仅供收益分析。成交和持仓估值取独立的交易价格列。"""
+    """DlyRet includes distributions and is for return analysis only. Fills and valuations use a separate trade-price column."""
     with crsp_table(path) as rows:
         required = {"permno", "dlycaldt", "dlyclose" if require_prices else "dlyret"}
         missing = required.difference(rows.fieldnames)
@@ -86,12 +86,12 @@ def read_crsp_daily(path: Path, *, require_prices: bool) -> Iterator[StockDay]:
 
 
 def _number(value: str | None) -> Decimal | None:
-    # WRDS 空值表示没有观测；零收益则是一个有效观测。
+    # A WRDS null means no observation; a zero return is a valid observation.
     return Decimal(value) if value else None
 
 
 def read_vwaps(path: Path) -> dict[date, dict[int, Decimal]]:
-    """读独立行情表 date,permno,vwap；每行是同一指定成交时段的未复权 USD/share。"""
+    """Read a separate price table date,permno,vwap; each row is an unadjusted USD/share for the same specified trading session."""
     prices: dict[date, dict[int, Decimal]] = {}
     with crsp_table(path) as rows:
         for row in rows:
@@ -108,7 +108,7 @@ def read_vwaps(path: Path) -> dict[date, dict[int, Decimal]]:
 
 def read_benchmark_weights(path: Path, *, date_column: str = "date", id_column: str = "permno",
                            weight_column: str = "weight") -> dict[date, dict[int, Decimal]]:
-    """只读取供应商给出的逐日成分权重（小数）。缺少的日期或成分没有替代值。"""
+    """Read only the vendor's daily constituent weights (decimals). Missing dates or constituents have no substitute."""
     weights: dict[date, dict[int, Decimal]] = {}
     with crsp_table(path) as rows:
         columns = date_column.lower(), id_column.lower(), weight_column.lower()
@@ -135,7 +135,7 @@ class Membership:
 
 
 def read_membership(path: Path) -> list[Membership]:
-    """保留每段历史成员区间；MbrEndDt 不是证券退市日期。"""
+    """Keep each historical membership interval; MbrEndDt is not the security's delisting date."""
     with crsp_table(path) as rows:
         permno, start, end = "permno", "mbrstartdt", "mbrenddt"
         if "first_in_sample_trading_date" in rows.fieldnames:
@@ -157,14 +157,14 @@ class Delisting:
 
 
 def read_delistings(path: Path) -> list[Delisting]:
-    """DelistingDt 是 CRSP 跟踪交易所的最后价格日。DelRet 不产生账户现金流。"""
+    """DelistingDt is the last price date on the CRSP-tracked exchange. DelRet creates no account cash flow."""
     with crsp_table(path) as rows:
         return [Delisting(int(r["permno"]), date.fromisoformat(r["delistingdt"]),
                           f"{r['delactiontype']}/{r['delreasontype']}") for r in rows]
 
 
 def read_close_halts() -> dict[date, frozenset[int]]:
-    """在本地 CRSP 仍标 Active 的日期，加入已核实妨碍收盘成交的停牌。"""
+    """On dates the local CRSP still marks Active, add verified halts that prevent trading at the close."""
     path = Path(__file__).resolve().parents[1] / "data/crsp/confirmed_close_halts.csv"
     by_day: dict[date, set[int]] = {}
     with crsp_table(path) as rows:

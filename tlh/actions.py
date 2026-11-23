@@ -1,4 +1,4 @@
-"""已核实的事件由明确的经济条款驱动。复杂事件可以传入有来源的逐案处理。"""
+"""Verified events are driven by explicit economic terms. Complex events can pass in sourced case-by-case handling."""
 
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
@@ -18,7 +18,7 @@ Source = TypeVar("Source")
 
 
 def _cil_allocations(quantities: Mapping[Source, Fraction]) -> dict[Source, Fraction]:
-    """先按证券保留整股，再按各来源的零股份额分摊实际 CIL。"""
+    """Keep whole shares per security first, then allocate the actual CIL by each source's fractional share."""
     tails = {i: tail for i, q in quantities.items() if (tail := q % 1)}
     total = sum(tails.values())
     remainder = total % 1
@@ -37,27 +37,27 @@ class ActionResult:
     status: str
     detail: str
     affected_lots: tuple[int, ...] = ()
-    received_lots: tuple[int, ...] = ()  # 本次分配产生的 lot IDs。
+    received_lots: tuple[int, ...] = ()  # Lot IDs created by this distribution.
     split_pieces: tuple[SplitPiece, ...] = ()
     ratio_source: str | None = None
     ratio_needs_review: bool = False
     split_ratio: Fraction | None = None
     reported_shares_per_parent: Decimal | Fraction | None = None
     effective_shares_per_parent: Fraction | None = None
-    wash_loss_days: tuple[date, ...] = ()  # 未核实的比例换算了哪些在窗亏损。
-    close_basis_fraction: Fraction | None = None  # 子股分到分拆前 lot 总 basis 的比例。
+    wash_loss_days: tuple[date, ...] = ()  # Which in-window losses were converted with an unverified ratio.
+    close_basis_fraction: Fraction | None = None  # Fraction of the pre-spin-off total lot basis assigned to the child.
     basis_price_day: date | None = None
 
 
 @dataclass(frozen=True)
 class StockCashPayment:
-    """发行人公布的未作选择结果。股票对价和实际到账现金分别可核对。"""
+    """Issuer-published result for accounts that made no election. Stock consideration and cash received can be checked separately."""
     reference: str
     permno: int
     cash_per_share: Decimal
-    stock_value_per_share: Decimal  # 股票对价，单位为美元 / 原股。
-    conversion_price: Decimal   # 发行人计股价格。
-    tax_fractions: tuple[Decimal, Decimal, Decimal, Decimal]  # Ordinary、qualified、capital gain、§1250。
+    stock_value_per_share: Decimal  # Stock consideration in dollars per old share.
+    conversion_price: Decimal   # Issuer conversion price.
+    tax_fractions: tuple[Decimal, Decimal, Decimal, Decimal]  # Ordinary, qualified, capital gain, §1250.
 
     def entitlements(self, eligible: Decimal) -> tuple[Decimal, Decimal, Fraction]:
         stock_value = eligible * self.stock_value_per_share
@@ -75,7 +75,7 @@ class StockCashPayment:
         amounts = (gross * f for f in self.tax_fractions)
         account.distribution_income.append(DistributionIncome(day, self.reference, gross, *amounts))
         shares = next(share_increments([units]))
-        # 被动收到的分配使用新 lot，只有主动买入才登记为 wash-sale replacement。
+        # Passively received distributions create new lots; only active purchases are registered as wash-sale replacements.
         new = account.receive(day, self.permno, shares, stock_value, day, self.reference)
         new.exact_shares = units
         new.purchase_price = self.conversion_price
@@ -85,7 +85,7 @@ class StockCashPayment:
 
 @dataclass(frozen=True)
 class PropertyDividend:
-    """应税配股可交付股票，或按事件条款以 FMV 一次折成现金股息。"""
+    """A taxable rights issue delivers stock, or per the event terms is converted once into a cash dividend at FMV."""
     reference: str
     permno: int
     spin_off_child: int
@@ -102,7 +102,7 @@ class PropertyDividend:
         child = self.spin_off_child
         delayed = self.first_trade is not None and day < self.first_trade
         if delayed:
-            # 首个常规交易日也约束策略独立发出的子股订单。
+            # The first regular trading day also constrains child-share orders placed independently by the strategy.
             grant = account.prelistings.setdefault(child, Prelisting(self.first_trade, self.child_fmv, self.reference))
         if self.cash_at_fmv:
             cash_per_parent = as_decimal(self.ratio * Fraction(self.child_fmv))
@@ -128,7 +128,7 @@ class PropertyDividend:
             received = (receive(kept, held).id,)
         if delayed and tail:
             claim = receive(tail, sum(lot.units for lot in grant.fractions))
-            del account.lots[claim.id]  # 上市前单列 CIL，避免计入可交割的股数。
+            del account.lots[claim.id]  # Keep CIL separate before listing so it is not counted in deliverable shares.
             ref = f"{grant.reference}|{self.reference}" if grant.fractions else self.reference
             account.prelistings[child] = replace(grant, reference=ref, fractions=(*grant.fractions, claim))
         if shares:
@@ -140,24 +140,24 @@ class PropertyDividend:
 @dataclass(frozen=True)
 class SpinOffTerms:
     child: int
-    shares_per_parent: Fraction | Decimal  # 如每 3 股配 1 股，传 Fraction(1, 3)。
-    child_basis_fraction: Decimal | None  # 发行人示例，仅供核对。
+    shares_per_parent: Fraction | Decimal  # For example, one new share per three old shares is Fraction(1, 3).
+    child_basis_fraction: Decimal | None  # Issuer example, for checking only.
     source: str
-    ratio_is_approximate: bool | None = None  # None 自动识别，True 仅有约数，False 表示原值已核实。
-    exchange_fmv: Decimal | None = None  # 紧随分拆的 §367(a) 换股，每股最终 ADS 的发行人 FMV。
+    ratio_is_approximate: bool | None = None  # None detects automatically, True means only an approximation is known, False means the value is verified.
+    exchange_fmv: Decimal | None = None  # Issuer FMV per final ADS for a §367(a) exchange immediately following the spin-off.
 
     @property
     def effective_ratio(self) -> Fraction | None:
         raw = self.shares_per_parent
         if not isinstance(raw, Decimal) or self.ratio_is_approximate is False:
-            return Fraction(raw)  # 发行人写明的分子和分母直接使用。
+            return Fraction(raw)  # Use the issuer's stated numerator and denominator directly.
         literal = Fraction(raw)
         if raw.as_tuple().exponent <= -6 and raw >= 0:
             scale = 1_000_000
             prefix = int(literal * scale)
             if not prefix:
-                return None  # 六位全零可对应无限多个分母。
-            # 截断或四舍五入能得到 prefix，当且仅当 prefix-0.5 ≤ scale/n < prefix+1。
+                return None  # Six zero digits match infinitely many denominators.
+            # Truncation or rounding gives prefix if and only if prefix-0.5 ≤ scale/n < prefix+1.
             min_n = scale // (prefix + 1) + 1
             max_n = (2 * scale) // (2 * prefix - 1)
             if min_n == max_n:
@@ -169,7 +169,7 @@ class SpinOffTerms:
 
 def _spin_off_receipts(account: Ledger, eligible: Mapping[int, Decimal], child: int, ratio: Fraction,
                        exact_shares: Mapping[int, Fraction]):
-    """先算子公司证券的精确累计权益，再把每个交易 lot 的份额分给其税务明细。"""
+    """Compute the exact cumulative entitlement to the subsidiary's security first, then split each trading lot's share across its tax records."""
     if not eligible:
         return
     prior = sum((exact_shares.get(lot.id, lot.units) for lot in account.lots.values()
@@ -189,7 +189,7 @@ def _spin_off_receipts(account: Ledger, eligible: Mapping[int, Decimal], child: 
 class SpinOffBasis:
     price_day: date
     of_original: Fraction
-    of_remaining: Fraction  # 同时分出多个子股时，按过账顺序从剩余母股 basis 划出。
+    of_remaining: Fraction  # When several children are spun off at once, basis is carved from the remaining parent basis in posting order.
 
 
 @dataclass(frozen=True)
@@ -197,7 +197,7 @@ class SpinOff:
     reference: str
     permno: int
     terms: SpinOffTerms
-    joint_children: frozenset[int] = frozenset()  # 发行人确认属于同一笔分拆的全部子股。
+    joint_children: frozenset[int] = frozenset()  # All children the issuer confirms belong to the same spin-off.
 
     @property
     def spin_off_child(self) -> int:
@@ -230,7 +230,7 @@ class SpinOff:
             child = account.receive(day, terms.child, size, basis, parent.holding_start,
                                     self.reference, prior_periods=periods)
             if terms.exchange_fmv is not None and basis is not None:
-                # 每个来源单独确认 gain。浮亏留在 ADS 的转入 basis，不与其他来源的 gain 净抵。
+                # Each source recognizes its gain separately. Unrealized losses stay in the ADS carryover basis and are not netted against other sources' gains.
                 value = as_decimal(exact * Fraction(terms.exchange_fmv))
                 if value > basis:
                     account.sales.append(Sale(day, parent.id, self.permno, ZERO, value, basis, parent.holding_start,
@@ -257,10 +257,10 @@ class SpinOff:
 
 @dataclass(frozen=True)
 class CorporateAction:
-    reference: str             # 数据源事件 ID 或可追溯的人工 override
+    reference: str             # Data-source event ID or a traceable manual override
     permno: int
     kind: str
-    value: Decimal | Fraction | str   # 精确的非终止拆股比例可用 Fraction(new, old)。
+    value: Decimal | Fraction | str   # An exact non-terminating split ratio can be given as Fraction(new, old).
     ratio_source: str | None = None
     unverified_ratio: bool = False
 
@@ -317,7 +317,7 @@ class CaseReview:
     status: str
     detail: str
     post_known: Callable[[Ledger, date], tuple[int, ...]] | None
-    spin_off_child: int | None = None  # CRSP 已标明分拆但子股代码缺失时为 0。
+    spin_off_child: int | None = None  # 0 when CRSP flags a spin-off but the child identifier is missing.
 
     def post(self, day: date, account: Ledger, entitled: Entitlements) -> ActionResult:
         if self.status not in {"RESOLVED", "BASIS_PENDING", "ECONOMIC_PENDING"}:
@@ -331,7 +331,7 @@ class CaseReview:
         affected = (self.post_known(account, day) if self.post_known is not None else
                     tuple(lot.id for lot in account.lots.values() if lot.permno == self.permno))
         if self.status == "BASIS_PENDING":
-            # 人工复核可点名整股，也可点名需要核实的一段成本。
+            # A manual review can name whole shares or a cost segment that needs verification.
             groups = account.trading_lots()
             segments = {lot.id for i in affected for lot in (groups[i] if i in groups else [account.lots[i]])}
             for i in segments:
@@ -344,7 +344,7 @@ AccountAction = CorporateAction | SpinOff | PropertyDividend | StockCashPayment 
 
 
 def prelisting_cil(day: date, actions: Sequence[AccountAction], entitled: Entitlements) -> dict[str, Fraction]:
-    """同日多种母股配发同一未上市子股时，各自只预留合计后应付现的尾数。"""
+    """When several parents distribute the same unlisted child on one day, each reserves only the fractional remainder payable in cash after aggregation."""
     grants = defaultdict(dict)
     for event in actions:
         if isinstance(event, PropertyDividend) and not event.cash_at_fmv and event.first_trade and day < event.first_trade:

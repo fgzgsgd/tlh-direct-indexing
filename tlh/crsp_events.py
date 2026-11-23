@@ -1,4 +1,4 @@
-"""把 CRSP 分配表的原始条款转换为账本事件，以 PERMNO、ex-date 和序号定位来源。"""
+"""Convert raw CRSP distribution terms into ledger events, located by PERMNO, ex-date and sequence number."""
 
 from collections import defaultdict
 from collections.abc import Mapping
@@ -25,7 +25,7 @@ SPIN_OFF_TABLE = Path(__file__).resolve().parents[1] / "data" / "crsp" / "spin_o
 SPLIT_TABLE = SPIN_OFF_TABLE.with_name("split_terms.csv")
 ALCOA_SPIN_OFF = "CRSP/StkDistributions/24643/2016-11-01/1"
 
-# 同一笔可选分配在 CRSP 有现金、股票两行。未作选择的账户采用发行人实际公布的配比。
+# An elective distribution has a cash row and a stock row in CRSP. Accounts that make no election use the issuer's published ratio.
 AIMCO_CASH_ROW = "CRSP/StkDistributions/80711/2020-11-03/1"
 AIMCO_STOCK_ROW = "CRSP/StkDistributions/80711/2020-11-03/2"
 AIMCO_PAYMENT = StockCashPayment(
@@ -53,7 +53,7 @@ def _issuer_spin_off(ref: str, row: dict[str, str]) -> SpinOffTerms | PropertyDi
 def read_distributions(*paths: Path, spin_off_terms: Mapping[str, SpinOffTerms] | None = None,
                        split_terms: Mapping[str, SplitTerms] | None = None
                        ) -> dict[date, list[AccountAction]]:
-    """合并 WRDS 分批导出；同一事件有冲突时指出原始键，供核对。"""
+    """Merge batched WRDS exports; report the raw key when the same event conflicts, for review."""
     events = {}
     for path in paths:
         with crsp_table(path) as rows:
@@ -82,12 +82,12 @@ def read_distributions(*paths: Path, spin_off_terms: Mapping[str, SpinOffTerms] 
             if cash is None or stock is None or cash.get("dispaydt") != stock.get("dispaydt"):
                 raise ValueError(f"{ref}: paired Aimco distribution records are missing or disagree on pay date.")
             if ref == AIMCO_CASH_ROW:
-                by_day[day].append(AIMCO_PAYMENT)  # ex-date 按最终配比一次交付。
+                by_day[day].append(AIMCO_PAYMENT)  # Delivered once at the final ratio on the ex-date.
             continue
         terms = spin_offs.get(ref)
         issuer = published.get((day, p, sequence))
         if issuer and issuer["treatment"] == "foreign_cash_dividend":
-            # 实际交付境外上市股票时，整项权益按 ex-date 美元行情一次性记普通股息。
+            # When foreign-listed shares are actually delivered, the whole entitlement is booked once as an ordinary dividend at the ex-date dollar price.
             if row["distype"] != "SP" or issuer["close_date"] != day.isoformat() or not issuer["child_close_usd"]:
                 raise ValueError(f"{ref}: foreign share distribution requires its ex-date USD close.")
             price = Fraction(issuer["child_close_usd"])
@@ -116,7 +116,7 @@ def _classify(p: int, ref: str, r: dict[str, str], terms: SpinOffTerms | Propert
             raise ValueError(f"{ref}: invalid verified split terms or incompatible event.")
         return CorporateAction(ref, p, "SPLIT", split.ratio, ratio_source=split.source)
     if terms is not None:
-        # Alcoa 2016 的原始行为母公司 STKDIV。只有逐笔提供发行人条款才重分类。
+        # Alcoa 2016 is raw parent STKDIV. It is reclassified only when issuer terms are provided case by case.
         kind = group, detail, tax, payment
         child = terms.child if isinstance(terms, SpinOffTerms) else terms.spin_off_child
         crsp_child = int(r.get("dispermno") or 0)
@@ -128,7 +128,7 @@ def _classify(p: int, ref: str, r: dict[str, str], terms: SpinOffTerms | Propert
     if detail == "SECRD":
         return CorporateAction(ref, p, "RIGHTS_WAIVED", Decimal(0))
     taxable_dividend = tax == "D" and detail in {"CDIV", "SDIV", "CDPSR"}
-    # CRSP 的 DisDivAmt 使用 USD/share，包括以外币支付的现金股息。
+    # CRSP DisDivAmt is in USD/share, including cash dividends paid in foreign currency.
     cash_payment = payment == "USD" or (payment == "FX" and taxable_dividend)
     if cash_payment and group in {"CD", "SD", "ROC"} and r["disdivamt"]:
         amount = Decimal(r["disdivamt"])
@@ -136,16 +136,16 @@ def _classify(p: int, ref: str, r: dict[str, str], terms: SpinOffTerms | Propert
             return CorporateAction(ref, p, "CASH_DIVIDEND", amount)
         if tax == "R" and detail in {"ROC", "SDROC"}:
             return CorporateAction(ref, p, "ROC", amount)
-        # Gilead 这 35 笔季度现金股息缺股东税务拆分，按项目约定走普通股息税账。
+        # These 35 Gilead quarterly cash dividends lack a tax breakdown and are taxed as ordinary dividends per the project convention.
         if (p == 77274 and (group, detail, tax) == ("CD", "CDIV", "N")
                 and r["disordinaryflg"] == "Y" and r["disfreqtype"] == "Q"
                 and "2015-09-14" <= r["disexdt"] <= "2024-03-14"):
             return CorporateAction(ref, p, "CASH_DIVIDEND", amount)
-        # 可核实的现金先入账；对每个 lot 的 basis 或税务性质留给逐案核实。
+        # Post verifiable cash first; per-lot basis or tax character is left for case-by-case verification.
         return CorporateAction(ref, p, "UNCLASSIFIED_CASH", amount)
 
     if group == "FRS" and payment == "SS" and tax == "N" and r["disfacshr"]:
-        # 事件表记录每股新增的股数。例如 4-for-1 的 DisFacShr 是 3。
+        # The event table records new shares per share. For example, DisFacShr is 3 for a 4-for-1 split.
         factor = 1 + Decimal(r["disfacshr"])
         if factor > 0 and detail in {"STKSPL", "REVSPL", "STKDIV"}:
             kind = "NONTAXABLE_STOCK_DIVIDEND" if detail == "STKDIV" else "SPLIT"

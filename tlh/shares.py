@@ -1,4 +1,4 @@
-"""股数的有限小数精确相加、换算。避免逐批分摊后把整股误判为零股。"""
+"""Exact addition and conversion of finite-decimal share counts, so whole shares are not misread as fractions after allocation across lots."""
 
 from collections.abc import Iterable
 from decimal import Decimal, ROUND_DOWN, localcontext
@@ -11,7 +11,7 @@ def sum_shares(quantities: Iterable[Decimal]) -> Decimal:
         return Decimal(0)
     if len(values) == 1:
         return values[0]
-    # 整数部分留出加总所需位数，小数部分保留所有 lots 的最小计量单位。
+    # Leave enough integer digits for the sum and keep the smallest unit of all lots in the fraction.
     high = max(q.adjusted() for q in values)
     low = min(q.as_tuple().exponent for q in values)
     with localcontext() as ctx:
@@ -24,14 +24,14 @@ def as_decimal(value: Fraction) -> Decimal:
 
 
 def share_increments(amounts: Iterable[Fraction], *, starting: Fraction = Fraction(0)) -> Iterable[Decimal]:
-    """先按证券累加精确权益，再以相邻累计数之差记入各 lot，完整的一股始终按 1 入账。"""
+    """Accumulate exact entitlements per security first, then book each lot as the difference of adjacent cumulative totals, so a whole share is always booked as 1."""
     def balance(value: Fraction) -> Decimal:
         whole, tail = divmod(value.numerator, value.denominator)
         if not tail:
             return Decimal(whole)
         with localcontext() as ctx:
             ctx.rounding = ROUND_DOWN
-            # 分开整数和小数，保证分配 1 整股时不受已有零股影响。有限小数保留所有位。
+            # Separate integer and fractional parts so allocating one whole share is unaffected by existing fractions. Finite decimals keep all digits.
             ctx.prec = max(ctx.prec, len(str(tail)) + value.denominator.bit_length())
             remainder = Decimal(tail) / Decimal(value.denominator)
         return sum_shares((Decimal(whole), remainder))
@@ -51,7 +51,7 @@ def fraction(shares: Decimal) -> Decimal:
 
 
 def apportion(total: Decimal, weights: Iterable[Fraction]) -> list[Decimal]:
-    """按权重分摊股数或金额。最后一段承接不可表示的小数尾差，总量精确守恒。"""
+    """Allocate shares or amounts by weight. The last segment absorbs any unrepresentable remainder so the total is conserved exactly."""
     weights = list(weights)
     if len(weights) == 1:
         return [total]

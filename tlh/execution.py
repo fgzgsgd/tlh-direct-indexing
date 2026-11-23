@@ -1,4 +1,4 @@
-"""前收盘锁定净订单；成交日只用实际价格过账。"""
+"""Lock net orders at the previous close; post only at actual prices on the trade date."""
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -16,26 +16,26 @@ Sizer = Callable[[Decimal, Decimal, Decimal], Decimal]
 
 
 def proportional_commission(rate: Decimal) -> Fee:
-    """按实际成交额收费，rate 为小数，例如 0.001 代表 10 bps。"""
+    """Charge on actual notional; rate is a decimal, e.g. 0.001 means 10 bps."""
     def commission(_day: date, _permno: int, shares: Decimal, price: Decimal) -> Decimal:
         return shares * price * rate
 
     return commission
 
 
-DEFAULT_COMMISSION = proportional_commission(Decimal("0.0005"))  # 买入、卖出各 5 bp。
+DEFAULT_COMMISSION = proportional_commission(Decimal("0.0005"))  # 5 bp each for buys and sells.
 
 
 def floor_shares(nav: Decimal, weight: Decimal, close: Decimal) -> Decimal:
-    """逐证券向下取整，未分配资金留在现金账户。"""
+    """Round down per security; unallocated cash stays in the cash account."""
     return (nav * weight) // close
 
 
 @dataclass(frozen=True)
 class Order:
     permno: int
-    quantity: Decimal       # 净买量为正，净卖量为负；单位是信号日的股。
-    lots: Mapping[int, Decimal]  # 卖单的逐批分配，买单为空。
+    quantity: Decimal       # Net buy quantity is positive and net sell negative, in signal-day shares.
+    lots: Mapping[int, Decimal]  # Per-lot allocation for sell orders; empty for buy orders.
 
     def checked(self, day: date) -> "Order":
         quantity = Decimal(self.quantity)
@@ -51,7 +51,7 @@ class Order:
 def lock_orders(state: CloseSnapshot, weights: Mapping[int, Decimal], size: Sizer,
                 lot_relief: LotRelief | None, blocked: set[int],
                 sell_lots: Mapping[int, Mapping[int, Decimal]] | None = None) -> tuple[Order, ...]:
-    """在同一份前收盘账本上把目标持股减去真实持股；不接收成交日行情。"""
+    """Subtract actual holdings from target holdings on the same previous-close ledger; does not take trade-date prices."""
     by_name = state.lots_by_permno
     orders = []
     explicit = dict(sell_lots or {})
@@ -105,7 +105,7 @@ def select_lots(state: CloseSnapshot, p: int, quantity: Decimal,
 
 def buy_shares(book: Ledger, day: date, orders: Sequence[Order], prices: Mapping[int, Decimal],
                fee: Fee, price_source: str, *, price_days: Mapping[int, date] | None = None) -> None:
-    """先核对整批可成交买单的成本；缺现金时报错，不让证券顺序决定哪些买单能成交。"""
+    """Check the cost of all fillable buy orders together; raise on insufficient cash rather than letting security order decide which buys fill."""
     fills = []
     required = ZERO
     for order in orders:

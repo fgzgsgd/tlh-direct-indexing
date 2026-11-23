@@ -1,4 +1,4 @@
-"""在同一个账户上逐期运行策略或重放已有指令，按实际成交和收盘持股估值。"""
+"""Run a strategy or replay existing orders period by period on one account, valuing at actual fills and closing holdings."""
 
 from bisect import bisect_left, bisect_right
 from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
@@ -36,7 +36,7 @@ class Rebalance:
     next_trade_day: date
 
     def upcoming_delistings(self, delistings: Iterable[Delisting]) -> dict[int, list[Delisting]]:
-        """包含未持有的证券。此处有意使用事后获知的退市日期。"""
+        """Includes securities not held. Delisting dates known after the fact are used here on purpose."""
         upcoming: dict[int, list[Delisting]] = {}
         for event in delistings:
             if self.trade_day < event.day <= self.next_trade_day:
@@ -45,7 +45,7 @@ class Rebalance:
 
 
 def rebalances(sessions: Sequence[date], first_trade: date, end: date) -> Iterator[Rebalance]:
-    """输入真实交易日历，包括首笔信号日以及末次调仓的完整前瞻窗口。"""
+    """Input the real trading calendar, including the first signal day and the full look-ahead window of the last rebalance."""
     if any(a >= b for a, b in zip(sessions, sessions[1:])):
         raise ValueError("Trading sessions must be unique and sorted.")
     index = bisect_left(sessions, first_trade)
@@ -67,14 +67,14 @@ class _CloseMark:
 
 @dataclass(frozen=True)
 class Session:
-    """raw_closes 只存真实收盘价，成交补价另保留原报价日。"""
+    """raw_closes holds only real closing prices; filled-in trade prices keep their original quote date."""
 
     execution_prices: Mapping[int, Decimal]
     raw_closes: Mapping[int, Decimal]
     actions: Sequence[AccountAction]
     price_source: str = "CLOSE"
     raw_opens: Mapping[int, Decimal] = field(default_factory=dict)
-    tradable: Collection[int] | None = None  # 交易状态独立于旧实验的 VWAP 覆盖。
+    tradable: Collection[int] | None = None  # Tradability is independent of the VWAP coverage of the old experiment.
     halted: frozenset[int] = frozenset()
     _carried: Mapping[int, _CloseMark] = field(default_factory=dict, repr=False)
 
@@ -124,7 +124,7 @@ class Session:
 
 def _closing_marks(previous: dict[int, _CloseMark], day: date, market: Session,
                    expired: Sequence[Delisting]) -> dict[int, _CloseMark]:
-    """延用同一证券最近的实际收盘。除权后等新的报价，避免把除权前价格乘上新股数。"""
+    """Carry forward the security's latest actual close. After an ex-date, wait for a new quote rather than applying the old price to the new share count."""
     marks = previous.copy()
     for event in expired:
         marks.pop(event.permno, None)
@@ -144,7 +144,7 @@ def sessions_from_crsp(rows: Iterable[StockDay], *, tradable: Mapping[date, set[
                        regular_session_vwaps: Mapping[date, Mapping[int, Decimal]] | None = None,
                        close_example: bool = False
                        ) -> dict[date, Session]:
-    """用可交易的 DlyClose 成交。显式传入 VWAP 表可重放先前的对照实验。"""
+    """Trade at the tradable DlyClose. Passing a VWAP table explicitly replays an earlier comparison experiment."""
     if close_example and regular_session_vwaps is not None:
         raise ValueError("The CLOSE replay and VWAP table select different execution prices.")
     if tradable.keys() != actions_by_day.keys():
@@ -167,7 +167,7 @@ def sessions_from_crsp(rows: Iterable[StockDay], *, tradable: Mapping[date, set[
         if _valid_price(row.raw_close):
             closes[d][p] = row.raw_close
         if p in tradable[d] and (row.trading_status == "A" or (not row.trading_status and p in closes[d])):
-            eligible[d].add(p)  # 缺价格的 CRSP 行必须明确标为 Active 才可回补成交。
+            eligible[d].add(p)  # A CRSP row with a missing price must be explicitly flagged Active to allow a back-filled trade.
         if row.raw_open is not None and row.raw_open > 0:
             opens[d][p] = row.raw_open
     prices = closes if regular_session_vwaps is None else regular_session_vwaps
@@ -190,8 +190,8 @@ class Valuation:
     pending_entitlements: dict[int, Decimal] = field(default_factory=dict)
     execution_source: str = "CLOSE"
     carried_close_dates: dict[int, date] = field(default_factory=dict)
-    tax_cash_flow: Decimal = ZERO  # 当日开盘前实际入账的净额。
-    prelisting_marks: dict[int, Decimal] = field(default_factory=dict)  # look-ahead FMV，仅供上市前估值。
+    tax_cash_flow: Decimal = ZERO  # Net amount actually credited before the open that day.
+    prelisting_marks: dict[int, Decimal] = field(default_factory=dict)  # Look-ahead FMV, used only to value positions before listing.
 
     @property
     def actual_weights(self) -> dict[int, Decimal] | None:
@@ -208,7 +208,7 @@ class YearEndWealth:
     pre_tax: Decimal | None
     after_tax: Decimal | None
     tax: Statement
-    unverified_split_ratios: tuple[str, ...] = ()  # 仍影响本期或累计税务结果的 CRSP 事件 ID。
+    unverified_split_ratios: tuple[str, ...] = ()  # CRSP event IDs that still affect this period's or cumulative tax results.
     tax_amount_known: bool = True
 
 
@@ -234,7 +234,7 @@ class Run:
     exits: list[ExitRecord]
     plans: dict[date, tuple[Order, ...]]
     observed_through: date
-    targets: dict[date, Target] = field(default_factory=dict)  # 生效日 → 权重及锁定的卖出分配。
+    targets: dict[date, Target] = field(default_factory=dict)  # Effective date → weights and locked sell allocations.
     last_prices: Mapping[int, Decimal] = field(default_factory=dict)
     fee: Fee = DEFAULT_COMMISSION
     last_halts: frozenset[int] = frozenset()
@@ -242,7 +242,7 @@ class Run:
     tax_settlements: list[TaxSettlement] = field(default_factory=list)
 
     def pre_tax_twr(self, start: date | None = None, end: date | None = None) -> Decimal | None:
-        """按收益归属日（含首尾）复合 daily returns。缺一日收益时，整段 TWR 留空。"""
+        """Compound daily returns by attribution date (inclusive). If any day's return is missing, the period TWR is left empty."""
         returns = [v.daily_return for v in self.history
                    if (start is None or start <= v.day) and (end is None or v.day <= end)]
         if not returns or None in returns:
@@ -260,7 +260,7 @@ class Run:
 
     def liquidated_wealth(self, scenario: Scenario | None = None, *, prices: Mapping[int, Decimal] | None = None,
                           fee: Fee | None = None, wash_reviewed_years: set[int] | None = None) -> YearEndWealth:
-        """以结束交易日的同源成交价在独立账本上清算。旧接口传入的价格须与行情一致。"""
+        """Liquidate on a separate ledger at the same-source trade price of the final trading day. Prices passed through the old interface must match the market data."""
         scenario = self._report_scenario(scenario)
         fee = self.fee if fee is None else fee
         book = deepcopy(self.ledger)
@@ -292,7 +292,7 @@ class Run:
         as_of = as_of or self.observed_through
         year_ends = {v.day.year: v for v in history}
         unverified = [(d.year, event.reference) for d, event in self.actions if event.ratio_needs_review]
-        # 空仓时的合股只影响仍待配对的股数。窗口结束后，只有实际用过该比例的配对影响原亏损年。
+        # A reverse split while flat only affects shares still awaiting matching. After the window ends, only matches that actually used the ratio affect the original loss year.
         unverified.extend((match.sale_day.year, ref) for match in book.wash_matches for ref in match.unverified_splits)
         for losses in book.open_losses.values():
             for loss in losses:
@@ -312,7 +312,7 @@ class Run:
                 settlement = next(paid, None)
             ratios = tuple(dict.fromkeys(ref for year, ref in unverified if year <= income.year))
             if ratios:
-                tax = replace(tax, final=False)  # 仍列按 CRSP 原值模拟的税额与财富。
+                tax = replace(tax, final=False)  # Still report tax and wealth simulated with the raw CRSP values.
             verified = verified and income.basis_verified
             after = (tax.after_tax_wealth(valuation.nav, settled_flow)
                      if valuation.nav is not None and verified else None)
@@ -321,7 +321,7 @@ class Run:
 
 
 class AccountEngine:
-    """唯一能过账的账户。研究端读 close_snapshot，文件重放走相同的两个步骤。"""
+    """The only account that can post. Research code reads close_snapshot; file replay goes through the same two steps."""
 
     def __init__(self, initial_cash: Decimal = INITIAL_CASH, *, start: date, fee: Fee = DEFAULT_COMMISSION,
                  size: Sizer = floor_shares, lot_relief: LotRelief | None = None,
@@ -332,7 +332,7 @@ class AccountEngine:
                           fee=fee, tax_scenario=tax_scenario)
         self._tax_review_end: date | None = None
         self.fee, self.size, self.lot_relief = fee, size, lot_relief
-        self._basis_days = basis_days or {}  # 只用于免税分拆的 CLOSE 取价。
+        self._basis_days = basis_days or {}  # Used only for CLOSE prices of tax-free spin-offs.
         self.blocked: set[int] = set()
         self.price_source = "CLOSE" if close_example else price_source
         if self.price_source not in {"CLOSE", "VWAP"}:
@@ -346,7 +346,7 @@ class AccountEngine:
         self.economic_pending = self.tax_pending = False
 
     def _opening_tax(self, day: date) -> tuple[list[TaxSettlement], date | None]:
-        """在已有账本上预览一月划款或观察期后的补差。调用本身不改余额。"""
+        """Preview the January transfer or post-window true-up on the existing ledger. The call itself does not change balances."""
         result = self.result
         if not result.history or (day.year == result.observed_through.year
                                   and (self._tax_review_end is None or day <= self._tax_review_end)):
@@ -367,7 +367,7 @@ class AccountEngine:
                 refs = [r.reference for d, r in result.actions if d.year <= tax.year and r.status != "RESOLVED"]
                 raise ValueError(f"{day} TAX_SETTLEMENT for {tax.year}: incomplete tax basis or consideration. "
                                  f"Review the source events before funding: {', '.join(dict.fromkeys(refs))}.")
-            # 资金在该税年的 wash-sale 窗口结束后结清；报告仍可保留估算比例的来源标记。
+            # Cash settles after the tax year's wash-sale window ends; the report can still keep the source flag for estimated ratios.
             window_closed = as_of >= tax.review_end
             if old and (old.final or not window_closed):
                 continue
@@ -392,7 +392,7 @@ class AccountEngine:
                 target: Target, blocked: set[int], *, snapshot: CloseSnapshot | None = None) -> tuple[Order, ...]:
         weights = target.active_weights(trade_day)
         if not self.result.history and signal_day == self.result.observed_through:
-            # 逐日 API 的第一笔锁单也提供了建仓前的实际收盘价。
+            # The first locked order of the daily API also supplies the actual closes before the initial build.
             self._marks.update({p: _CloseMark(px, signal_day) for p, px in closes.items() if _valid_price(px)})
         if not target.rebalance:
             if self.last_weights is None and weights:
@@ -441,7 +441,7 @@ class AccountEngine:
         marks = _closing_marks(self._marks, day, market, expired)
         for p in unlisted | book.prelistings.keys():
             if not _valid_price(market.raw_closes.get(p)):
-                marks.pop(p, None)  # 临时估值和 when-issued 行情均不能成为上市后的前值成交价。
+                marks.pop(p, None)  # Neither temporary valuations nor when-issued quotes may become the prior trade price after listing.
         market = market.with_execution_closes(day, marks, self._halts.get(day, frozenset()))
         listed = [p for p, grant in book.prelistings.items() if day >= grant.first_trade]
         due, next_review = self._opening_tax(day)
@@ -467,7 +467,7 @@ class AccountEngine:
                         if day != grant.first_trade or price is None:
                             raise ValueError(f"{day} {p} CASH_IN_LIEU: missing first regular CLOSE on {grant.first_trade}.")
                         lots = {lot.id: lot.units for lot in grant.fractions}
-                        book.lots.update((lot.id, replace(lot)) for lot in grant.fractions)  # 失败后仍可重试。
+                        book.lots.update((lot.id, replace(lot)) for lot in grant.fractions)  # Can still be retried after a failure.
                         book.sell(day, p, lots, price, dict.fromkeys(lots, ZERO), "CASH_IN_LIEU",
                                   event_id=grant.reference, price_source="CLOSE", price_day=day)
                 orders = self._post_actions(day, market, expired, orders, forced_exits)
@@ -500,13 +500,13 @@ class AccountEngine:
             else:
                 record = event.post(day, book, entitled)
             result.actions.append((day, record))
-            # 已核实的分拆先分配 basis，母股原单仍按相同股数和原 lots 交割。
+            # Verified spin-offs allocate basis first; the original parent order still settles with the same shares and lots.
             child = getattr(event, "spin_off_child", None)
             if child is not None and (record.status != "RESOLVED" or record.effective_shares_per_parent is None):
                 order_conflicts.setdefault(event.permno, []).append(f"spin-off parent: {event.reference}")
                 if record.status == "ECONOMIC_PENDING" and entitled.get(event.permno):
                     reason = f"unknown spin-off entitlement: {event.reference} (parent PERMNO {event.permno})"
-                    # 子股身份也未知时，无法从当日订单中排除任何一只证券。
+                    # When the child's identity is also unknown, no security can be excluded from that day's orders.
                     affected = (child,) if child else (order.permno for order in orders)
                     for permno in affected:
                         order_conflicts.setdefault(permno, []).append(reason)
@@ -533,7 +533,7 @@ class AccountEngine:
                 receiver = book.lots[record.received_lots[0]].permno
                 share_events.setdefault(receiver, []).append(record)
 
-        # 当日 ex-date 分配先按前收盘资格入账，零股结算在主动订单之前。
+        # Ex-date distributions post first based on previous-close eligibility; fractional shares settle before active orders.
         if orders and (order_conflicts or share_events):
             _check_locked_orders(day, book, orders, order_conflicts, share_events)
         for p, records in share_events.items():
@@ -557,7 +557,7 @@ class AccountEngine:
                       event_id=reference, price_source=market.price_source, price_day=market.price_day(day, permno))
 
     def _carry_entitlements(self, record: ActionResult, entitled: dict[int, Decimal]) -> None:
-        """旧 segment 分到多股时，同日预先锁定的 ROC、spin-off 领取资格随原股转移。"""
+        """When an old segment maps to several shares, same-day pre-locked ROC and spin-off entitlements move with the original share."""
         descendants = {}
         for piece in record.split_pieces:
             descendants.setdefault(piece.old_segment, []).append(piece)
@@ -627,7 +627,7 @@ class AccountEngine:
     def _mark_close(self, day: date, market: Session, marks: dict[int, _CloseMark], tax_flow: Decimal = ZERO) -> None:
         result, book = self.result, self.result.ledger
         positions = book.holdings()
-        # 人工事件也必须遵守证券级整数股约束。
+        # Manual events must also respect the security-level whole-share constraint.
         fractions = {p: tail for p, q in positions.items() if (tail := fraction(q))}
         if fractions:
             raise ValueError(f"{day}: corporate action left unsettled fractional shares: {fractions}.")
@@ -652,7 +652,7 @@ class AccountEngine:
                 for p in sorted(self.blocked & target.weights.keys()):
                     result.exceptions.append((day, p, "BUY: blocked by pre-delisting convention"))
         self.last_nav = nav
-        self._marks = marks  # 当天成功过账后才推进，失败重试仍从上一个收盘开始。
+        self._marks = marks  # Advance only after the day posts successfully; a retry after failure restarts from the previous close.
         result.observed_through = day
         result.last_prices = dict(market.execution_prices) if market.price_source == self.price_source else {}
         result.last_halts = market.halted
@@ -675,7 +675,7 @@ def _check_locked_orders(day: date, book: Ledger, orders: Sequence[Order],
         if receipts and not reasons:
             received = sum(book.lots[lot_id].units for record in receipts
                            for lot_id in record.received_lots if lot_id in book.lots)
-            # 直接冲突已足以暂停。其余子股订单只比较有无分股时能保留的整股数。
+            # A direct conflict is enough to pause. Other child-share orders only compare the whole shares kept with and without the split.
             total = sum(lot.units for lot in book.lots.values() if lot.permno == p)
             retained = int(total) - int(total - received)
             if retained:
@@ -715,7 +715,7 @@ def run(*, sessions: Sequence[date], first_trade: date, end: date,
         exit_days: Iterable[date] | None = None, close_example: bool = False,
         split_designations: Mapping[str, SplitDesignation] | None = None,
         tax_scenario: Scenario = Scenario.EXTERNAL_GAINS, engine_factory=AccountEngine) -> Run:
-    """逐期调用策略或重放权重文件，两种入口共用同一套计划、执行与记账逻辑。"""
+    """Call the strategy or replay a weights file period by period; both entry points share the same planning, execution and accounting logic."""
     if any(a >= b for a, b in zip(sessions, sessions[1:])):
         raise ValueError("Trading sessions must be unique and sorted.")
     start = bisect_left(sessions, first_trade)
@@ -749,11 +749,11 @@ def run(*, sessions: Sequence[date], first_trade: date, end: date,
         following = bisect_right(sessions, event.day)
         if following < len(sessions):
             after.setdefault(sessions[following], []).append(event)
-    # 行情入口已选定整次运行的价格源；缺某日价格时不切换。
+    # The market-data entry point fixes the price source for the whole run; it does not switch when a day's price is missing.
     engine = engine_factory(initial_cash, fee=fee, size=size, lot_relief=lot_relief, start=sessions[start - 1],
                            price_source=days[first_trade].price_source, close_example=close_example,
                            split_designations=split_designations, basis_days=days, tax_scenario=tax_scenario)
-    # 建仓前只预热收盘行情；账户仍从现金开始，历史分配不入账。
+    # Before the initial build, only warm up closing prices; the account still starts from cash and historical distributions are not posted.
     for prior in sessions[:start]:
         if prior in days:
             engine._marks = _closing_marks(engine._marks, prior, days[prior], after.get(prior, ()))
@@ -769,7 +769,7 @@ def run(*, sessions: Sequence[date], first_trade: date, end: date,
             blocked = window.upcoming_delistings(delistings)
         banned = set(blocked)
         if pre_delisting:
-            banned.update(on_date.get(day, ()))  # D 恰为本期 T 时，上期已退出，本日继续禁买。
+            banned.update(on_date.get(day, ()))  # If D equals this period's T, the stock was exited last period and stays banned today.
         closes = days[signal].raw_closes
         snapshot = None
         if targets is not None:

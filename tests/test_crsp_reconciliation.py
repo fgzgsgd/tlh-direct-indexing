@@ -1,4 +1,4 @@
-"""从项目的真实 CIZ 导出逐表复核持仓、现金股息和拆股。"""
+"""Reconcile holdings, cash dividends and splits table by table against the project's real CIZ export."""
 
 import csv
 import unittest
@@ -59,7 +59,7 @@ class CRSPReconciliation(unittest.TestCase):
         events = read_distributions(DATA / "distributions_2015_to_2026_09.csv",
                                     DATA / "spy_supplemental_distributions.csv")
         calendar = nyse_trading_days()
-        # CRSP 的前收盘、ex-date 收盘和每股美元股息。
+        # CRSP previous close, ex-date close and dollar dividend per share.
         cases = (
             (76932, date(2017, 2, 13), "43.16", "43.18", "0.445440"),
             (76932, date(2017, 5, 11), "41.34", "40.03", "0.445420"),
@@ -173,7 +173,7 @@ class CRSPReconciliation(unittest.TestCase):
         book.buy(before, parent, D(2), D(100), D(0))
         with self.assertRaisesRegex(ValueError, "incomplete joint spin-off.*19286"):
             engine.advance(day, Session(prices, prices, legs[:1]), (), {}, ())
-        # Otis 仅有估值报价。两个子股都按条款到账，全部原始 basis 等待共同收盘行情。
+        # Otis has only a valuation quote. Both child shares arrive per the terms; all original basis waits for a common closing price.
         active = {parent: prices[parent], carrier: prices[carrier]}
         engine.advance(day, Session(active, prices, legs), (), {}, ())
         self.assertEqual(book.holdings(), {parent: 2, carrier: 2, otis: 1})
@@ -200,8 +200,8 @@ class CRSPReconciliation(unittest.TestCase):
     def test_catalog_distinguishes_share_entitlement_and_us_tax_treatment(self):
         events = read_distributions(DATA / "distributions_2015_to_2026_09.csv")
         for day, parent, child, shares, expected_status in [
-            (date(2017, 1, 30), 27043, 16543, 2, "BASIS_PENDING"),  # 五股 Varian 应收两股 Varex。
-            (date(2017, 9, 1), 15707, 16850, D(".68663055"), "BASIS_PENDING"),  # 直接 post 未提供分拆行情。
+            (date(2017, 1, 30), 27043, 16543, 2, "BASIS_PENDING"),  # Five Varian shares receive two Varex shares.
+            (date(2017, 9, 1), 15707, 16850, D(".68663055"), "BASIS_PENDING"),  # The direct post provides no spin-off price.
         ]:
             with self.subTest(parent=parent):
                 book = Ledger(D(500))
@@ -221,7 +221,7 @@ class CRSPReconciliation(unittest.TestCase):
         event, = [e for e in read_distributions(DATA / "distributions_2015_to_2026_09.csv")[day] if e.permno == p]
         engine = AccountEngine(D(2000), start=date(2017, 8, 31))
         book = engine.result.ledger
-        # 两个来源各 10 股，一批有利得，一批有亏损。税务 FMV 与 CLOSE 独立。
+        # Two sources of 10 shares each, one lot with a gain and one with a loss. Tax FMV is independent of CLOSE.
         low = book.buy(date(2016, 2, 2), p, D(10), D(10), D(0))
         high = book.buy(date(2017, 3, 2), p, D(10), D(40), D(0))
         closes = {p: D("14.31"), child: D("28.81")}
@@ -240,7 +240,7 @@ class CRSPReconciliation(unittest.TestCase):
         self.assertEqual({s.holding_start for s in cil}, {low.holding_start, high.holding_start})
         self.assertEqual((book.holdings()[child], book.cash - D(1500)),
                          (2, D(".7465222") * D("28.81")))
-        # 留仓与零股合计的 basis 只增加该批实际认列的 gain。
+        # The basis of retained plus fractional shares increases only by the gain actually recognized for that lot.
         self.assertAlmostEqual(book.total_basis() + sum(s.basis for s in cil), 500 + gain.gain, places=20)
 
     def test_property_dividend_and_reclassified_organon_use_their_own_basis_rules(self):
@@ -319,13 +319,13 @@ class CRSPReconciliation(unittest.TestCase):
         parent, child = 52708, 26039
         event, = [e for e in read_distributions(DATA / "distributions_2015_to_2026_09.csv")[ex]
                   if isinstance(e, PropertyDividend) and e.permno == parent]
-        event = replace(event, cash_at_fmv=False)  # 同一组发行条款用于复核实物交付选项。
+        event = replace(event, cash_at_fmv=False)  # The same issuance terms are used to check the in-kind delivery option.
         for count in (1, 2, 3):
             signal = date(2025, 1, 17)
             engine = AccountEngine(D(100 * count), start=signal)
             book = engine.result.ledger
             book.buy(signal, parent, D(count), D(100), D(0))
-            quotes = {parent: D("88.255"), child: D(90)}  # 模拟 when-issued 价，应忽略。
+            quotes = {parent: D("88.255"), child: D(90)}  # Simulated when-issued price, which must be ignored.
             for d, events in [(ex, [event]), (interim, [])]:
                 engine.advance(d, Session(quotes, quotes, events), (), {}, ())
                 mark = engine.result.history[-1]
@@ -342,7 +342,7 @@ class CRSPReconciliation(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "missing first regular CLOSE"):
                     engine.advance(first, Session({parent: D(90)}, {parent: D(90)}, []), (), {}, ())
                 self.assertEqual((book.prelistings[child].pending_shares, book.cash), (D(".5"), 0))
-            actual = {parent: D("88.255"), child: D(24)}  # 手算上市日 CLOSE。
+            actual = {parent: D("88.255"), child: D(24)}  # Hand-computed CLOSE on the listing date.
             engine.advance(first, Session(actual, actual, []), (), {}, ())
             mark = engine.result.history[-1]
             self.assertEqual((mark.prelisting_marks, mark.pending_entitlements, mark.cash), ({}, {}, 12 * (count % 2)))
@@ -350,7 +350,7 @@ class CRSPReconciliation(unittest.TestCase):
             self.assertEqual([s.taxable_gain for s in book.sales], [D(".255")] if count % 2 else [])
             self.assertEqual(book.tax_year(2025, basis_verified=True).taxable_dividends, count * D("11.745"))
 
-        # 上市日才开始的账户没有获配资格，行情预热同样不能拿 when-issued 价成交。
+        # An account that starts on the listing date is not eligible, and market warm-up cannot trade at the when-issued price either.
         wi = {child: D(90)}
         days = {ex: Session(wi, wi, [event]), interim: Session(wi, wi, []),
                 first: Session({}, {}, [], tradable={child})}
@@ -394,7 +394,7 @@ class CRSPReconciliation(unittest.TestCase):
         book.buy(prior, parent, D(15), D(100), D(0))
         prices = {parent: D("133.14")}
         engine.advance(ex, Session(prices, prices, [event]), [Order(parent, 1, {})], {}, ())
-        # 前收盘的 15 股领取 $176.175，当天买入第 16 股花 $133.14 加 5 bp。
+        # The 15 shares held at the previous close receive $176.175; buying a 16th share that day costs $133.14 plus 5 bp.
         self.assertEqual((book.cash, book.holdings(), book.tax_year(2025, basis_verified=True).taxable_dividends),
                          (D("42.96843"), {parent: 16}, D("176.175")))
         mrp = event.spin_off_child
@@ -407,7 +407,7 @@ class CRSPReconciliation(unittest.TestCase):
         spin, = [e for e in read_distributions(DATA / "distributions_2015_to_2026_09.csv")[day]
                  if e.permno == parent]
         self.assertIsNone(spin.terms.child_basis_fraction)
-        # 手算行情。5 股母股分得 2 股子股，子股市值 100，母股市值 400。
+        # Hand-computed prices. Five parent shares receive two child shares; child value 100, parent value 400.
         rows = [StockDay(parent, day, None, None, D(80)), StockDay(child, day, None, None, D(50))]
         market = sessions_from_crsp(rows, tradable={day: {parent, child}}, actions_by_day={day: [spin]},
                                     regular_session_vwaps={day: {child: D(49)}})[day]
@@ -427,7 +427,7 @@ class CRSPReconciliation(unittest.TestCase):
         book.buy(acquired, p, D(100), D(30), D(0))
         loss_lot = book.buy(acquired, p, D(1), D(40), D(0))
         loss, = book.sell(before, p, {loss_lot.id: D(1)}, D(30), {loss_lot.id: D(0)}, "TRADE")
-        # 取计股价作手算 CLOSE，使 CIL 损益为零，单独检验股息税与原有亏损。
+        # Use the conversion price as the hand-computed CLOSE so the CIL gain is zero, isolating the dividend tax and the existing loss.
         px = {p: D("30.98"), other: D(10)}
         events = read_distributions(DATA / "distributions_2015_to_2026_09.csv")
         for d in (ex, paid):
@@ -477,7 +477,7 @@ class CRSPReconciliation(unittest.TestCase):
                         initial_cash=D(10000), fee=proportional_commission(D(0)), delistings=[],
                         delistings_known_through=next_exit, exit_days=[first], next_rebalance=next_exit)
         for sell_day in (None, ex, sale):
-            targets = {first: Target({p: D(".31")})}  # 实际买入 100 股，均有领取资格。
+            targets = {first: Target({p: D(".31")})}  # Actually buys 100 shares, all eligible.
             if sell_day:
                 targets[sell_day] = Target({})
             live = run(**settings, strategy=lambda s: targets[s.trade_day], rebalance_days=targets)
@@ -542,7 +542,7 @@ class CRSPReconciliation(unittest.TestCase):
         parent, child = 24643, 16347
         rows, tradable = [], {}
         for row in read_crsp_daily(DATA / "sp500_member_daily_2015_2026_09.csv.gz", require_prices=True):
-            if row.day > ex:  # 文件按交易日排序。
+            if row.day > ex:  # The file is sorted by trading day.
                 break
             if row.day >= signal and row.permno in {parent, child}:
                 rows.append(row)
@@ -571,12 +571,12 @@ class CRSPReconciliation(unittest.TestCase):
             lots = {lot.permno: lot for lot in result.ledger.lots.values()}
             self.assertEqual((record.status, result.history[-1].basis_verified, result.ledger.total_basis()),
                              ("RESOLVED", True, D("81.12")))
-            # 三股 ARNC 的收盘市值为 56.76 美元，分得的一股 AA 为 23 美元。
+            # Three ARNC shares close at $56.76; the one AA share received is worth $23.
             self.assertEqual(record.close_basis_fraction, Fraction(23) / Fraction("79.76"))
             self.assertEqual((lots[parent].basis, lots[child].basis, lots[child].holding_start),
                              (D("81.12") - child_basis, child_basis, lots[parent].holding_start))
 
-        # 分拆日清母股，按原 lot 的调整后成本交割，获配的 AA 留在账户。
+        # Sell the parent on the spin-off date at the original lots' adjusted cost; the AA shares received stay in the account.
         targets = {**live.targets, ex: Target({})}
         with TemporaryDirectory() as folder:
             path = Path(folder) / "weights.csv"
@@ -612,7 +612,7 @@ class CRSPReconciliation(unittest.TestCase):
         members = read_membership(DATA / "sp500_membership_intervals.csv")
         self.assertTrue(any(m.permno == permno and m.start <= signal <= ex_date <= m.end
                             for m in members))
-        # 此小窗口使用 benchmark 观察日期，整个样本的 NYSE 日期核对见 analysis.check_trading_calendar。
+        # This small window uses benchmark observation dates; the full-sample NYSE calendar check is in analysis.check_trading_calendar.
         with (DATA.parent / "market/sp500_observed_trading_dates.csv").open() as source:
             calendar = [date.fromisoformat(r["trading_date"]) for r in csv.DictReader(source)]
         study_days = {d for d in calendar if signal <= d <= ex_date}
@@ -651,14 +651,14 @@ class CRSPReconciliation(unittest.TestCase):
         dividend, = [e for e in result.ledger.entries if e.kind == "CASH_DIVIDEND"]
         self.assertEqual(dividend.cash_change, D(12) * D(".31"))
         self.assertEqual(ex.cash, drift.cash + dividend.cash_change)
-        # 个股含息收益只用于外部核对；用昨日实际股票市值加权，现金的日收益为零。
+        # Stock total returns are used only for external checks; weights are yesterday's actual stock values and cash earns zero.
         stock_pnl = sum(drift.market_values[p] * observed[ex_date][p].total_return for p in names)
         self.assertLessEqual(abs(stock_pnl / drift.nav - ex.daily_return), D("0.0000005"))
         self.assertEqual(result.exceptions, [])
         interactive = replay(strategy=lambda state: Target({10107: D(".55"), 14593: D(".45")}))
         self.assertEqual((interactive.history, interactive.ledger.entries), (result.history, result.ledger.entries))
 
-        # 真实收盘与目标保持不变，只换成用来手算的假设 VWAP，不冒充历史数据。
+        # Real closes and targets are unchanged; only a hypothetical VWAP for hand calculation is swapped in, not presented as historical data.
         alternative = replay({first: {10107: D(43), 14593: D(126)}})
         bought = alternative.history[0]
         self.assertEqual((bought.holdings, bought.cash, bought.nav, bought.daily_return),

@@ -1,4 +1,4 @@
-"""按研究情景净抵已实现损益和股息税，计算每个税年的应缴税或节税。"""
+"""Net realized gains, losses and dividend tax under the research scenario to compute tax owed or saved for each tax year."""
 
 from calendar import isleap
 from collections.abc import Iterable, Iterator
@@ -17,7 +17,7 @@ ZERO = Decimal(0)
 
 
 def is_long_term(holding_start: date, sale_day: date) -> bool:
-    """使用 lot 的税务持有起点；满一周年的次日才算 LT。"""
+    """Uses the lot's tax holding start; a position is LT only from the day after its one-year anniversary."""
     year = holding_start.year + 1
     day = holding_start.day
     if holding_start.month == 2 and day == 29 and not isleap(year):
@@ -32,7 +32,7 @@ class Scenario(Enum):
 
 @dataclass(frozen=True)
 class DistributionIncome:
-    """gross 用于项目股息税。发行人的四项分类保留供对账。"""
+    """gross is used for the project's dividend tax. The issuer's four categories are kept for reconciliation."""
     day: date
     reference: str
     gross: Decimal
@@ -46,7 +46,7 @@ class DistributionIncome:
 class PropertyIncome:
     day: date
     reference: str
-    gross: Decimal  # 按获配前的母股股数计算应税股息；可与新 lot 的 FMV 有列示差异。
+    gross: Decimal  # Taxable dividend computed on parent shares before the distribution; may differ in presentation from the new lot's FMV.
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ class Statement:
     st_carryforward: Decimal
     lt_carryforward: Decimal
     final: bool
-    review_end: date  # 该税年最后一个必须观察的日期（含当日）。
+    review_end: date  # Last date that must be observed for this tax year (inclusive).
 
     def after_tax_wealth(self, nav: Decimal, settled_cash_flow: Decimal = ZERO) -> Decimal:
         return nav - (self.cumulative_tax + settled_cash_flow)
@@ -78,14 +78,14 @@ class TaxSettlement:
     day: date
     tax_year: int
     net_tax: Decimal
-    cash_flow: Decimal  # 退税为正，付款为负；定稿时只划差额。
-    final: bool  # 本税年的 wash-sale 观察期已结束，按当前研究口径结清现金。
+    cash_flow: Decimal  # Refunds positive, payments negative; only the difference is transferred at finalization.
+    final: bool  # The tax year's wash-sale window has ended and cash is settled under the current research convention.
     scenario_dependent: bool
 
 
 def settle_years(years: Iterable[TaxYear], scenario: Scenario, observed_through: date
                  ) -> Iterator[Statement]:
-    """从现金建仓年开始，按税年传入含 wash-sale 调整的损益。亏损及节税取负。"""
+    """Starting from the cash-funded build year, pass wash-sale-adjusted gains and losses by tax year. Losses and tax savings are negative."""
     st_carry = lt_carry = cumulative = ZERO
     previous_year = None
     final = True
@@ -95,7 +95,7 @@ def settle_years(years: Iterable[TaxYear], scenario: Scenario, observed_through:
         previous_year = income.year
         st, lt = income.short_term - st_carry, income.long_term - lt_carry
         if scenario is Scenario.LIMITED_USE:
-            # 同类先汇总，再用一类的净亏损抵另一类的净利得；未用亏损保留性质。
+            # Net within each class first, then offset one class's net loss against the other's net gain; unused losses keep their character.
             if st < 0 < lt:
                 offset = min(-st, lt)
                 st, lt = st + offset, lt - offset
@@ -112,6 +112,6 @@ def settle_years(years: Iterable[TaxYear], scenario: Scenario, observed_through:
         review_end = last_trading_day_of_year(income.year)
         if income.last_loss_day is not None:
             review_end = max(review_end, income.last_loss_day + WINDOW)
-        # 12 月的亏损可能因次年买入而变化；这个标记同时适用于累计税款和财富。
+        # December losses may change with next year's purchases; this flag applies to both cumulative tax and wealth.
         final = final and income.basis_verified and observed_through >= review_end
         yield Statement(income.year, tax, cumulative, st_carry, lt_carry, final, review_end)

@@ -1,4 +1,4 @@
-"""合并按 PERMNO、日期排序的 WRDS 日行情，保留成分期外记录和全部原始字段。"""
+"""Merge WRDS daily stock files sorted by PERMNO and date, keeping off-index records and all raw fields."""
 
 import csv
 import gzip
@@ -50,6 +50,6 @@ if __name__ == "__main__":
     sources = [DATA / "raw" / name for name in
                ("daily_base.zip", "daily_supplement.zip", "daily_spin_off_receivers.zip",
                 "daily_spin_off_extended.zip", "daily_receiver_history.zip")]
-    # 新导出多选的两个上市区间字段保留在原始 ZIP，行情按同一组原始报价字段对账。
+    # The two listing-interval fields added in the newer export stay in the raw ZIP; prices are reconciled on the same raw quote fields.
     kept, duplicates = merge_daily(sources, DAILY_PRICES, omit_columns=("securitybegdt", "securityenddt"))
     print(f"{DAILY_PRICES.name}: {kept:,} unique security-days, {duplicates:,} identical rows removed.")

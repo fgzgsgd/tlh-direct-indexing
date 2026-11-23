@@ -1,1 +1,1 @@
-"""Direct indexing 与 tax-loss harvesting 回测。"""
+"""Backtest of direct indexing with tax-loss harvesting."""

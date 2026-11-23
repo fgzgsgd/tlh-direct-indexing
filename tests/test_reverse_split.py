@@ -125,7 +125,7 @@ class ReverseSplitTests(unittest.TestCase):
                    for d, px in zip(sessions, prices)}
         settings = dict(sessions=sessions, first_trade=sessions[1], end=NEXT, days=markets, delistings=[],
                         delistings_known_through=NEXT, initial_cash=D(1000), fee=NO_FEE, pre_delisting=False)
-        # 第二次下单基于前收盘 10 美元，把目标从 2 股调至 4 股。
+        # The second order uses the previous close of $10 and moves the target from 2 to 4 shares.
         def decide(state):
             if state.trade_day == NEXT:
                 lot, = state.lots
@@ -152,7 +152,7 @@ class ReverseSplitTests(unittest.TestCase):
         ex = day("2017-01-04")
         ref = "CRSP/StkDistributions/14338/2017-01-04/3"
         raw = next(e for e in self.events[ex] if e.reference == ref)
-        # 用模拟的后续核实条款重跑同一账户，验证标记和金额都按新账本重算。
+        # Rerun the same account with simulated later-verified terms to check that flags and amounts are recomputed on the new ledger.
         path = Path(__file__).resolve().parents[1] / "data/crsp/distributions_2015_to_2026_09.csv"
         updated = read_distributions(path, split_terms={ref: SplitTerms(Fraction(1, 3), "test override")})
         corrected = next(e for e in updated[ex] if e.reference == ref)
@@ -212,7 +212,7 @@ class ReverseSplitTests(unittest.TestCase):
                              (False, (raw.reference,) if event is raw else ()))
             self.assertEqual((book.wash_matches, book.sales[0].disallowed_loss), ([], 0))
             engine.advance(bought, Session(quotes, quotes, []), [Order(p, 1, {})], {}, ())
-            true_up = day("2017-01-30")  # 12-30 卖出后第 31 天，也是下一交易日。
+            true_up = day("2017-01-30")  # Day 31 after the 12-30 sale, which is also the next trading day.
             engine.advance(true_up, Session(quotes, quotes, []), (), {}, ())
             engine.advance(day("2017-12-29"), Session(quotes, quotes, []), (), {}, ())
             engine.advance(day("2018-01-31"), Session(quotes, quotes, []), (), {}, ())
@@ -247,12 +247,12 @@ class ReverseSplitTests(unittest.TestCase):
             pending, _ = engine.result.annual_wealth()
             self.assertEqual((pending.tax.final, pending.unverified_split_ratios),
                              (not in_window, (raw.reference,) if in_window else ()))
-            # 窗口内买另一 PERMNO；到期后才买回原股。两笔均不能递延原亏损。
+            # Buy a different PERMNO inside the window and the original stock only after it ends. Neither purchase may defer the original loss.
             quotes = {16498: D(5), p: D(30)}
             engine.advance(day("2017-01-05"), Session(quotes, quotes, []), [Order(16498, 1, {})], {}, ())
             engine.advance(day("2017-01-26"), Session(quotes, quotes, []), (), {}, ())
             self.assertEqual(engine.result.annual_wealth()[0].tax.final, not in_window)
-            engine.advance(day("2017-01-27"), Session(quotes, quotes, []), (), {}, ())  # 12-28 的第 30 天。
+            engine.advance(day("2017-01-27"), Session(quotes, quotes, []), (), {}, ())  # Day 30 after 12-28.
             prior = engine.result.annual_wealth()[0]
             self.assertEqual((prior.tax.final, prior.unverified_split_ratios), (True, ()))
             self.assertEqual(engine.result.liquidated_wealth(fee=NO_FEE).unverified_split_ratios, ())
@@ -297,7 +297,7 @@ class ReverseSplitTests(unittest.TestCase):
         state = engine.close_snapshot(EX, {P: D(45)}, trade_day=NEXT)
         group, = [l for l in state.lots if l.segments]
         self.assertEqual(hifo(state, P, D(1)), {other.id: 1})
-        # 整股按段预估为 5 × .238 – 2 × .408 = .374，另一批预计是 1.50 × .408 = .612。
+        # Whole shares are estimated by segment at 5 × .238 – 2 × .408 = .374; the other lot is expected at 1.50 × .408 = .612.
         self.assertEqual(ltfo(state, P, D(1)), {group.id: 1})
 
         engine = AccountEngine(D(1000), start=day("2016-10-05"), fee=NO_FEE)

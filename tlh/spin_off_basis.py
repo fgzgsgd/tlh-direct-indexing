@@ -1,4 +1,4 @@
-"""按除权后首个共同可用的 raw CLOSE 分摊免税分拆的原始 lot basis。"""
+"""Allocate a tax-free spin-off's original lot basis using the first common raw CLOSE after the ex-date."""
 
 from __future__ import annotations
 
@@ -25,10 +25,10 @@ def _valuation_sessions(ex_date: date, market: Session, history: Mapping[date, S
 
 
 def close_allocations(ex_date: date, market: Session, history: Mapping[date, Session]) -> dict[str, SpinOffBasis]:
-    """先试 ex-date，有缺价时整组取最近的共同交易日。显式记录 future peek 用到的日期。"""
+    """Try the ex-date first; if prices are missing, use the nearest common trading day for the whole group. Record the dates used for the future peek."""
     event_day_splits = defaultdict(lambda: Fraction(1))
     groups = defaultdict(list)
-    # 真正的 split 会换算当天新收到的股数，同日股票股息只属于前收盘已经持有的股份。
+    # A true split converts shares received that day, while a same-day stock dividend belongs only to shares held at the previous close.
     received_splits = defaultdict(lambda: Fraction(1))
     for event in reversed(market.actions):
         if _is_split(event):
@@ -59,7 +59,7 @@ def close_allocations(ex_date: date, market: Session, history: Mapping[date, Ses
                 if _is_split(event):
                     subsequent_splits[event.permno] *= Fraction(event.value)
         for parent, (legs, securities) in list(pending.items()):
-            # 同一组所有证券使用同日行情，再换回 ex-date 收盘股数单位。
+            # All securities in a group use same-day prices, then convert back to ex-date closing share units.
             closes = {}
             for p in securities:
                 price = session.regular_close(p)
@@ -70,7 +70,7 @@ def close_allocations(ex_date: date, market: Session, history: Mapping[date, Ses
             remaining = event_day_splits[parent] * closes[parent]
             values = [(event, q * closes[event.terms.child]) for event, q in legs]
             total = remaining + sum(value for _, value in values)
-            for event, value in values:  # 逆序加回子股，得到每一步过账前的剩余市值。
+            for event, value in values:  # Add children back in reverse to get the remaining value before each posting step.
                 remaining += value
                 allocations[event.reference] = SpinOffBasis(day, value / total, value / remaining)
             del pending[parent]

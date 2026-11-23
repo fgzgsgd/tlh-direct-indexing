@@ -1,4 +1,4 @@
-"""合股时先保留各批整股，再给必须跨批组成的新股绑定交易 ID。"""
+"""In a reverse split, keep each lot's whole shares first, then bind a trading ID to new shares that must combine lots."""
 
 from collections import defaultdict, deque
 from collections.abc import Mapping, Sequence
@@ -24,7 +24,7 @@ class SplitPiece:
     source_lot: int
     acquired: date
     holding_start: date
-    old_fraction: Fraction     # 原税务明细的多少转入本段，用于同日其他前收盘权益。
+    old_fraction: Fraction     # How much of the original tax record moves into this segment, used for other same-day previous-close entitlements.
     exact_shares: Fraction
     shares: Decimal
     basis: Decimal | None
@@ -33,14 +33,14 @@ class SplitPiece:
 
 @dataclass(frozen=True)
 class SplitDesignation:
-    """有逐股识别记录时，以新股为单位，列出每股的来源和最终 CIL 的来源。"""
+    """With share-level identification records, list each new share's sources and the source of the final CIL."""
     whole_shares: Sequence[Mapping[int, Fraction]]
     cash_in_lieu: Mapping[int, Fraction]
 
 
 @dataclass(frozen=True)
 class _Allotment:
-    sources: dict[int, Fraction]     # 以新股计，各旧交易 lot 贡献的份额。
+    sources: dict[int, Fraction]     # Share of each old trading lot per new share.
     retain_id: int | None = None
     cash_in_lieu: bool = False
 
@@ -58,7 +58,7 @@ def _take(pool: deque, size: Fraction) -> dict[int, Fraction]:
 
 
 def _partitions(items):
-    """保持给定的持有期顺序，枚举唯一尾数位于第几股之前。"""
+    """Keep the given holding-period order and enumerate before which share the single remainder falls."""
     total = sum(q for _, q in items)
     whole_count, tail = int(total), total % 1
     positions = range(whole_count + 1) if tail else (whole_count,)
@@ -89,7 +89,7 @@ def _identified(tails: dict[int, Fraction], designation: SplitDesignation, refer
 
 
 def _remainders(tails: dict[int, Fraction], groups, designation: SplitDesignation | None, reference: str):
-    """先最大化同日同价组成的整股数，再比较持有期跨度，同分时 CIL 优先取最早来源。"""
+    """Maximize whole shares formed from same-day, same-price lots first, then compare holding-period spans; on ties CIL takes the earliest source."""
     if designation is not None:
         return _identified(tails, designation, reference)
     if sum(tails.values()) < 1:
@@ -97,7 +97,7 @@ def _remainders(tails: dict[int, Fraction], groups, designation: SplitDesignatio
     dates = {i: (min(part.holding_start for part in groups[i]), max(part.holding_start for part in groups[i]))
              for i in tails}
     earliest = sorted(tails, key=lambda i: (min((part.acquired, part.source_id) for part in groups[i]), i))
-    # 相同取得日、成交价和持有期间的份额可互换。确定 CIL 后才将其落实到具体原始 lot。
+    # Shares with the same acquisition date, price and holding period are interchangeable. They are assigned to specific original lots only after CIL is set.
     equivalent = defaultdict(list)
     for i in earliest:
         prices = {(part.acquired, part.purchase_price) for part in groups[i]}
@@ -116,7 +116,7 @@ def _remainders(tails: dict[int, Fraction], groups, designation: SplitDesignatio
     def span(parts):
         return (max(dates[i][1] for i in parts) - min(dates[i][0] for i in parts)).days
 
-    # 只有同日同价却因 wash sale 等原因有不同持有期时，一个购买组才有多种非等价的尾数。
+    # A purchase group has several non-equivalent remainders only when same-day, same-price shares have different holding periods, e.g. because of wash sales.
     options = [list(_partitions(ordered(bucket))) if len(bucket) > 1 else [next(_partitions(bucket))]
                for bucket in by_purchase.values()]
     best_key, best = None, None
@@ -146,7 +146,7 @@ def bind_split(book: "Ledger", permno: int, factor: Fraction, reference: str,
     held = {i: sum(old_sizes[part.id] for part in parts) for i, parts in groups.items()}
     entitlements = {i: q * factor for i, q in held.items()}
     tails = {i: q % 1 for i, q in entitlements.items() if q % 1}
-    # 无须跨批凑股、各份额均可精确表示时，沿用原 lot；尾数由该 lot 直接结算。
+    # When no lots need combining and every share is exactly representable, keep the original lot and settle the remainder from it directly.
     if (designation is None and sum(tails.values()) < 1 and all(len(parts) == 1 for parts in groups.values())
             and all(Fraction(as_decimal(q)) == q for q in entitlements.values())):
         for i, parts in groups.items():
@@ -158,7 +158,7 @@ def bind_split(book: "Ledger", permno: int, factor: Fraction, reference: str,
     if cash:
         outputs.append(_Allotment(cash, cash_in_lieu=True))
 
-    # 按原始明细分配 basis；按每个新交易单位分配股数。非终止小数只在记入 Decimal 时舍入。
+    # Allocate basis by original record and shares by new trading unit. Non-terminating fractions are rounded only when stored as Decimal.
     destinations = defaultdict(list)
     for index, output in enumerate(outputs):
         for source, shares in output.sources.items():

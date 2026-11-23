@@ -1,4 +1,4 @@
-"""SPY 示例在正式分配表上补入 ETF 曾持有的两只证券的原始记录。"""
+"""Add the raw records of the two securities SPY once held to the official distribution table for the SPY example."""
 
 from tlh.crsp_events import read_distributions
 

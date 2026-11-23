@@ -27,7 +27,7 @@ class BacktestTests(unittest.TestCase):
             engine.advance(d, Session(quotes, quotes, ()), (), {}, ())
         self.assertEqual(engine.result.pre_tax_twr(), D("-.01"))
         self.assertEqual(engine.result.pre_tax_twr(down, down), D("-.10"))
-        # 一只新收到的证券没有可用估值，这一天的收益不能跳过。
+        # A newly received security has no usable price, so this day's return cannot be skipped.
         engine.result.ledger.receive(down, 20, D(1), D(0), down, "grant")
         engine.advance(gap, Session({}, {}, ()), (), {}, ())
         self.assertIsNone(engine.result.pre_tax_twr())
@@ -43,7 +43,7 @@ class BacktestTests(unittest.TestCase):
         days[halt] = Session({}, {}, [])
         result = self.replay(dates, days, {d: {p: "1"} for d in dates[1:]},
                              initial=initial, pre_delisting=False)
-        final = initial - before + after  # 1 股 BIIB 加建仓余款 26.73 美元。
+        final = initial - before + after  # One BIIB share plus $26.73 of cash left after the initial build.
         self.assertEqual([v.stock_market_value for v in result.history], [before, before, after])
         self.assertEqual([v.nav for v in result.history], [initial, initial, final])
         self.assertEqual([v.daily_return for v in result.history], [0, 0, final / initial - 1])
@@ -60,7 +60,7 @@ class BacktestTests(unittest.TestCase):
                           (second_gap, {20: D(57)}), (resumed, {10: D(45), 20: D(58)})):
             engine.advance(d, Session(quotes, quotes, []), (), {}, ())
         first_mark, a, b, c = engine.result.history
-        self.assertIsNone(first_mark.nav)  # 证券 20 尚无收盘价，买入成本不能补作历史报价。
+        self.assertIsNone(first_mark.nav)  # Security 20 has no close yet; the purchase cost cannot stand in for a historical quote.
         self.assertEqual((a.nav, b.nav, c.nav), (105, 107, 103))
         self.assertEqual((a.carried_close_dates, b.carried_close_dates, c.carried_close_dates),
                          ({10: first}, {10: first}, {}))
@@ -120,7 +120,7 @@ class BacktestTests(unittest.TestCase):
                 orders = engine.prepare(prior, {10: D(10)}, trade, Target({10: D(".5")}), set())
                 with self.assertRaisesRegex(ValueError, "trading halted|missing executable CLOSE"):
                     engine.advance(trade, market, orders, {}, ())
-                self.assertNotIn(20, market.tradable)  # 完全缺行的证券也没有 Active 记录。
+                self.assertNotIn(20, market.tradable)  # A security with no rows at all has no Active record either.
         later_quote = Session({10: D(90)}, {10: D(90)}, [])
         engine = AccountEngine(D(100), start=prior, basis_days={future: later_quote})
         with self.assertRaisesRegex(ValueError, "missing executable CLOSE"):
@@ -287,7 +287,7 @@ class BacktestTests(unittest.TestCase):
         self.assertEqual((result.history[-1].holdings, result.history[-1].cash), ({10: 2}, 75))
         liquidation = result.liquidated_wealth(Scenario.EXTERNAL_GAINS, fee=proportional_commission(D(".001")))
         self.assertEqual((liquidation.pre_tax, result.ledger.cash), (D("104.97"), 75))
-        self.assertEqual(result.liquidated_wealth(Scenario.EXTERNAL_GAINS).pre_tax, 105)  # 本次运行用零佣金。
+        self.assertEqual(result.liquidated_wealth(Scenario.EXTERNAL_GAINS).pre_tax, 105)  # This run uses zero commission.
         with self.assertRaisesRegex(ValueError, "liquidation price differs from the session CLOSE"):
             result.liquidated_wealth(Scenario.EXTERNAL_GAINS, prices={10: D(14)}, fee=proportional_commission(D(".001")))
 
@@ -351,7 +351,7 @@ class BacktestTests(unittest.TestCase):
             self.replay(dates, markets, weights, flagged=[first, second], delistings=events)
         result = self.replay(dates, markets, weights, flagged=[first], delistings=events, pre_delisting=False)
         self.assertEqual([v.nav for v in result.history[-3:]], [80, None, 85])
-        self.assertIsNone(result.history[-1].daily_return)  # 缺一个收盘，不能把两日变动当作单日收益。
+        self.assertIsNone(result.history[-1].daily_return)  # One close is missing, so a two-day change cannot be treated as a daily return.
         self.assertEqual(result.actions[-2][1].status, "ECONOMIC_PENDING")
         self.assertEqual(result.ledger.sales[0].gain, -15)
         self.assertEqual(result.ledger.holdings(), {})
@@ -390,9 +390,9 @@ class BacktestTests(unittest.TestCase):
             with self.subTest(year=year):
                 self.assertTrue(report(year, last).final)
         self.assertFalse(report(2023, "2023-12-28").final)
-        self.assertFalse(report(2026, "2026-09-30").final)  # 本地行情末日仍是年中。
+        self.assertFalse(report(2026, "2026-09-30").final)  # The last day of local market data is still mid-year.
         self.assertFalse(report(2023, "2023-12-29", verified=False).final)
-        self.assertFalse(report(2023, "2023-12-29", loss="2023-11-30").final)  # 第 30 天是周六。
+        self.assertFalse(report(2023, "2023-12-29", loss="2023-11-30").final)  # Day 30 is a Saturday.
         self.assertTrue(report(2023, "2024-01-02", loss="2023-11-30").final)
         self.assertFalse(report(2023, "2024-01-26", loss="2023-12-29").final)
         self.assertTrue(report(2023, "2024-01-29", loss="2023-12-29").final)
@@ -411,6 +411,6 @@ class BacktestTests(unittest.TestCase):
             holding, = result.annual_wealth(scenario)
             self.assertEqual((holding.as_of, holding.tax.net_tax, holding.after_tax, holding.tax.final),
                              (year_end, D("23.80"), D("1976.20"), True))
-            # 假设清算会在 12/29 产生 100 美元亏损。已知次年开市日不等于已观察过次年买入。
+            # Assume liquidation creates a $100 loss on 12/29. Knowing next year's first trading day is not the same as having observed next year's purchases.
             self.assertFalse(result.liquidated_wealth(scenario).tax.final)
         self.assertEqual(result.ledger.sales, [])

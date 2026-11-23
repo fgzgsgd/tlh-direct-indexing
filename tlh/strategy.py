@@ -1,4 +1,4 @@
-"""策略读取前收盘快照，返回目标权重及卖单的选批方式。"""
+"""The strategy reads a previous-close snapshot and returns target weights and the lot selection for sell orders."""
 
 from collections.abc import Callable, Container, Mapping
 from dataclasses import dataclass, field, replace
@@ -14,7 +14,7 @@ from .shares import sum_shares
 
 @dataclass(frozen=True, slots=True)
 class SegmentView:
-    id: int                   # 供核对税务流水。下单使用外层 LotView.id。
+    id: int                   # For reconciling tax records. Orders use the outer LotView.id.
     source_lot_id: int
     acquired: date
     holding_start: date
@@ -29,7 +29,7 @@ class LotView:
     acquired: date | None
     holding_start: date | None
     shares: Decimal
-    basis: Decimal | None       # 该 lot 的剩余总 adjusted basis。
+    basis: Decimal | None       # Remaining total adjusted basis of the lot.
     segments: tuple[SegmentView, ...] = ()
 
 
@@ -63,16 +63,16 @@ class WashLossView:
 
 @dataclass(frozen=True)
 class CloseSnapshot:
-    day: date                  # 已完成估值的信号日。
+    day: date                  # Signal day whose valuation is complete.
     cash: Decimal
     nav: Decimal | None
     closes: Mapping[int, Decimal]
     lots: tuple[LotView, ...]
     pending_lots: frozenset[int]
-    trade_day: date | None = None  # 已知的执行日期，不含该日行情。
-    blocked: frozenset[int] = frozenset()  # 当前 Pre-Delisting Exit 窗口内禁买的 PERMNO。
+    trade_day: date | None = None  # Known execution date, without that day's prices.
+    blocked: frozenset[int] = frozenset()  # PERMNOs banned from purchase in the current pre-delisting exit window.
     carried_close_dates: Mapping[int, date] = field(default_factory=lambda: MappingProxyType({}))
-    scheduled_tax_flow: Decimal = Decimal(0)  # 已知将于交易日开盘前划入（或扣除）的金额。
+    scheduled_tax_flow: Decimal = Decimal(0)  # Known amount to be credited (or debited) before the open on the trade date.
     prelisting_marks: Mapping[int, Decimal] = field(default_factory=lambda: MappingProxyType({}))
     wash_lots: tuple[WashLotView, ...] = ()
     wash_losses: tuple[WashLossView, ...] = ()
@@ -128,7 +128,7 @@ class CloseSnapshot:
                          for losses in book.open_losses.values() for x in losses), True)
 
 
-# 参数依次为只读快照、证券和已确定的净卖量，返回 {lot_id: shares}。
+# Arguments are the read-only snapshot, the security and the fixed net sell quantity; returns {lot_id: shares}.
 LotRelief = Callable[[CloseSnapshot, int, Decimal], Mapping[int, Decimal]]
 
 
@@ -156,13 +156,13 @@ Strategy = Callable[[CloseSnapshot], Target | None]
 
 
 def index_strategy(strategy: Strategy, members_at_signal: Callable[[CloseSnapshot], Container[int]]) -> Strategy:
-    """调仓时仅保留成分股目标。成员名单由策略提供，须在信号收盘时已知。"""
+    """Keep only constituent targets at rebalance. The strategy supplies the membership list, which must be known at the signal close."""
     def decide(state: CloseSnapshot) -> Target | None:
         target = strategy(state)
         if target is None or not target.rebalance:
             return None
         members = members_at_signal(state)
-        # 账本会卖净所有未列入目标的持仓，并将整仓实际交割的 lots 写入 replay。
+        # The ledger sells all holdings not in the targets and writes the lots actually delivered to the replay.
         return replace(target, weights={p: w for p, w in target.weights.items() if p in members},
                        sell_lots={p: lots for p, lots in target.sell_lots.items() if p in members})
 

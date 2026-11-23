@@ -29,7 +29,7 @@ class AccountRules(unittest.TestCase):
         book = engine.result.ledger
         book.buy(day("2024-01-02"), 10, D(10), D(20), D(0))
         engine.advance(before, Session({10: D(20)}, {10: D(20)}, []), (), {}, ())
-        # 每股原股配 $1 现金、$2.50 股票，已知计股价 $20。10 股共分得 1.25 股。
+        # Each old share gets $1 cash and $2.50 of stock at a $20 conversion price. Ten shares receive 1.25 shares.
         event = StockCashPayment("declared terms", 10, D(1), D("2.50"), D(20), (D(1), D(0), D(0), D(0)))
         prices = {10: D(16), 20: D(12)}
         engine.advance(ex, Session(prices, prices, [event]), [Order(20, 1, {})], {}, ())
@@ -150,7 +150,7 @@ class AccountRules(unittest.TestCase):
         signal, sale_day = day("2024-04-09"), day("2024-04-10")
         state = engine.close_snapshot(signal, prices, trade_day=sale_day)
         self.assertEqual([(l.shares, l.basis) for l in state.lots], [(1, 100), (1, 100)])
-        weight = {10: D(100) / state.nav}  # 以 80 美元收盘价锁定保留 1 股。
+        weight = {10: D(100) / state.nav}  # A close of $80 locks in keeping one share.
         halves = {lot.segments[-1].id: D(".5") for lot in state.lots}
         with self.assertRaises(ValueError):
             engine.prepare(signal, prices, sale_day, Target(weight, sell_lots={10: halves}), set())
@@ -324,7 +324,7 @@ class AccountRules(unittest.TestCase):
             book.buy(day("2023-01-03"), 10, D(qty), D(10), D(0))
         split = CorporateAction("r", 10, "SPLIT", D(".25"))
         engine.advance(t, Session({10: D(40)}, {10: D(40)}, [split]), (), {}, ())
-        # 总共交付 1.5 股。一整股保留，只有 0.5 股实际变现；三批的每股 basis 相同。
+        # 1.5 shares are delivered in total. One whole share is kept and only 0.5 share is sold; all three lots have the same per-share basis.
         self.assertEqual(book.holdings(), {10: 1})
         self.assertEqual((book.cash, sum(s.shares for s in book.sales), sum(s.proceeds for s in book.sales)),
                          (960, D(".5"), 20))
@@ -561,7 +561,7 @@ class AccountRules(unittest.TestCase):
             record = result.actions[0][1]
             self.assertEqual((record.basis_price_day, record.close_basis_fraction), (joint_day, Fraction(1, 4)))
             self.assertEqual({lot.permno: lot.basis for lot in result.ledger.lots.values()}, {10: 150, 20: 50})
-            # 事件日到账一股，现金仍为 800。未来的价格和 split 只参与估算 basis。
+            # One share arrives on the event date and cash stays at 800. Future prices and splits are used only to estimate basis.
             self.assertEqual((result.history[-1].holdings, result.history[-1].cash, result.history[-1].nav),
                              ({10: 2, 20: 1}, 800, None))
 
@@ -611,7 +611,7 @@ class AccountRules(unittest.TestCase):
         self.assertEqual((len(book.entries), book.sales, engine.result.actions), (2, [], []))
         self.assertEqual((engine.result.observed_through, len(engine.result.history)), (signal, 1))
 
-        # 撤掉两笔子股订单后重试，原母股卖单照常交割。
+        # Retry after cancelling the two child-share orders; the original parent sell order still settles.
         reviewed = Target({10: D(".2"), 30: D(".04"), 40: D(".01")})
         orders = engine.prepare(signal, quotes, trade, reviewed, set())
         engine.advance(trade, market, orders, {}, ())

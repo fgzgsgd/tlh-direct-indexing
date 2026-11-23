@@ -63,7 +63,7 @@ class StrategyTests(unittest.TestCase):
         result = run(strategy=decide, rebalance_days=self.rebalances, lot_relief=lambda *_: self.fail(), **self.inputs)
         self.assertEqual([s.day for s in seen], [self.signal, self.first, self.hold])
         self.assertEqual(seen[0].lots, ())
-        self.assertEqual(seen[-1].lots[0].shares, 3)  # 卖出后，信号日快照仍完整。
+        self.assertEqual(seen[-1].lots[0].shares, 3)  # After the sale, the signal-day snapshot is still complete.
         with self.assertRaises(TypeError):
             seen[-1].closes[10] = D(15)
         self.assertEqual(result.targets[self.hold], Target({10: D(".5")}, False))
@@ -117,7 +117,7 @@ class StrategyTests(unittest.TestCase):
                 return Target({10: D(".3") if not state.lots else D(".5")})
             older, newer = state.eligible_lots(10)
             self.assertEqual([(lot.shares, lot.basis / lot.shares) for lot in (older, newer)], [(6, 5), (4, 10)])
-            # 策略可用通用工具将自己的优先顺序分配到一笔 5 股净卖单。
+            # A strategy can use the generic helper to allocate its own lot priority to a 5-share net sell order.
             return Target({10: D(".4")}, sell_lots={10: take_shares([newer, older], D(5))})
 
         result = run(strategy=decide, rebalance_days=self.rebalances, **self.inputs)
@@ -149,7 +149,7 @@ class StrategyTests(unittest.TestCase):
         weights = {first: D(".2"), second: D(".42"), sale_day: D(".25")}
         market = {d: Session({10: D(fill)}, {10: D(close)}, [], "VWAP")
                   for d, fill, close in zip(dates, [100, 112, 100, 108, 105], [100, 100, 100, 100, 103])}
-        # 成交日刚跨过旧 lot 的一周年。两批信号价的每股预计税负分别为 -2.856 和 -3.264。
+        # The trade date just passes the old lot's one-year anniversary. Expected per-share tax at signal prices is -2.856 and -3.264 for the two lots.
         for policy, lot_id, gain, is_long in [(hifo, 1, -7, True), (ltfo, 2, -3, False)]:
             with self.subTest(policy=policy.__name__):
                 result = run(strategy=lambda s: Target({10: weights[s.trade_day]}, lot_relief=policy),
@@ -204,7 +204,7 @@ class StrategyTests(unittest.TestCase):
         result = run(strategy=decide, rebalance_days=self.rebalances, **self.inputs)
         self.assertEqual(result.targets[self.sell].sell_lots, {10: {1: 3}, 20: {4: 2, 2: 1}})
         self.assertEqual([s.gain for s in result.ledger.sales], [D("14.925"), D("-10.07"), D("4.975")])
-        # 两张卖单各成交 45 美元，一张卖一个 lot，另一张卖两个 lots。
+        # Two sell orders fill for $45 each, one selling one lot and the other two lots.
         trades = [e for e in result.ledger.entries if e.day == self.sell and e.kind == "TRADE"]
         for permno in (10, 20):
             self.assertEqual(sum(e.fee for e in trades if e.permno == permno), D(".045"))
@@ -259,7 +259,7 @@ class StrategyTests(unittest.TestCase):
         inputs = dict(self.inputs, days=days, end=ex, initial_cash=D(1000))
         weights = {self.first: {10: D(".20"), 20: D(".40")}, ex: {10: D(".19"), 20: D(".39")}}
         result = run(strategy=lambda s: Target(weights[s.trade_day]), rebalance_days=weights, **inputs)
-        # 两只股票各锁定卖 1 股。拆合股的 1/20 跳过，普通调仓的 1/40 成交。
+        # Each stock locks in a one-share sale. The split on 1/20 is skipped and the ordinary rebalance on 1/40 fills.
         self.assertEqual(result.targets[ex].sell_lots, {10: {1: 1}, 20: {2: 1}})
         self.assertEqual(result.exceptions, [(ex, 10, "SKIPPED_SPLIT_SALE 1/20 pre-split shares")])
         self.assertEqual([(s.permno, s.reason, s.shares, s.proceeds) for s in result.ledger.sales],

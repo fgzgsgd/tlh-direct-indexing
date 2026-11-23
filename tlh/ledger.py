@@ -1,4 +1,4 @@
-"""用交易价格和实际股数记账。每次卖出都能追到具体 tax lot。"""
+"""Book entries at trade prices and actual share counts. Every sale traces back to specific tax lots."""
 
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -21,14 +21,14 @@ class Lot:
     acquired: date
     holding_start: date
     shares: Decimal
-    basis: Decimal | None       # 剩余批次的总成本；待确认的 basis 保留为空。
-    origin: int | None = None   # 一笔真实买入的原始编号。非应税被动分配不构成新买入。
+    basis: Decimal | None       # Total cost of the remaining lot; pending basis stays empty.
+    origin: int | None = None   # Original ID of a real purchase. Non-taxable passive distributions are not new purchases.
     wash_used: bool = False
     prior_periods: Periods = ()
-    bound_lot_id: int | None = None  # 同一整股的税务 segments 共用一个交易 ID。
+    bound_lot_id: int | None = None  # Tax segments of the same whole share share one trading ID.
     source_lot_id: int | None = None
     purchase_price: Decimal | None = None
-    exact_shares: Fraction | None = None  # 非终止小数的税务份额可跨日精确配对。
+    exact_shares: Fraction | None = None  # Non-terminating fractional tax shares can be matched exactly across days.
 
     @property
     def units(self) -> Fraction:
@@ -49,7 +49,7 @@ class Sale:
     lot_id: int
     permno: int
     shares: Decimal
-    proceeds: Decimal           # 已扣与这部分股数对应的卖出费用。
+    proceeds: Decimal           # Net of the sale fees attributable to these shares.
     basis: Decimal | None
     holding_start: date
     reason: str
@@ -57,7 +57,7 @@ class Sale:
     event_id: str | None = None
     trading_lot_id: int | None = None
     source_lot_id: int | None = None
-    exact_shares: Fraction | None = None  # 处置的精确税务份额。
+    exact_shares: Fraction | None = None  # Exact tax shares disposed of.
 
     @property
     def gain(self) -> Decimal | None:
@@ -82,22 +82,22 @@ class Sale:
 class Entry:
     day: date
     kind: str
-    permno: int | None  # 税款划转属于账户整体。
+    permno: int | None  # Tax transfers belong to the account as a whole.
     shares: Decimal
     cash_change: Decimal
     reference: str
     fee: Decimal = ZERO
     price: Decimal | None = None
     price_source: str | None = None
-    price_day: date | None = None  # 用前值模拟成交时与实际记账日不同。
+    price_day: date | None = None  # Differs from the booking date when a fill is simulated at a prior price.
 
 
 @dataclass(frozen=True)
 class Prelisting:
     first_trade: date
-    price: Decimal  # 发行人事后公布的 FMV，仅供上市前估值。
+    price: Decimal  # FMV published by the issuer afterwards, used only for pre-listing valuation.
     reference: str
-    fractions: tuple[Lot, ...] = ()  # 待上市结算的 CIL，保留各来源的 basis。
+    fractions: tuple[Lot, ...] = ()  # CIL awaiting settlement at listing, keeping each source's basis.
 
     @property
     def pending_shares(self) -> Decimal:
@@ -126,12 +126,12 @@ class Ledger:
         return number
 
     def post_cash(self, amount: Decimal) -> None:
-        """按已入账流水的全部小数位累加，避免 CIL 与大额现金相加时再次舍入。"""
+        """Sum all decimal places of posted entries to avoid rounding again when CIL is added to large cash amounts."""
         self.cash = sum_shares((self.cash, amount))
 
     @contextmanager
     def transaction(self):
-        """失败时撤回当天过账。历史流水仅截断，当天可能回写的旧亏损单独恢复。"""
+        """Roll back the day's postings on failure. History is only truncated; old losses the day may have rewritten are restored separately."""
         cash, next_id = self.cash, self._next_id
         lots = {i: copy(lot) for i, lot in self.lots.items()}
         prelistings = self.prelistings.copy()
@@ -165,7 +165,7 @@ class Ledger:
         return {p: sum_shares(q) for p, q in positions.items()}
 
     def trading_lots(self, permno: int | None = None) -> dict[int, list[Lot]]:
-        """每个可交易 ID 对应一批可一起交割的税务明细，账本只持有一份股数和成本。"""
+        """Each tradable ID maps to a group of tax records that settle together; the ledger holds one share count and cost."""
         groups: dict[int, list[Lot]] = {}
         for lot in self.lots.values():
             if permno is None or lot.permno == permno:
@@ -176,7 +176,7 @@ class Ledger:
         return {i: sum_shares(lot.shares for lot in parts) for i, parts in self.trading_lots(permno).items()}
 
     def entitled_lots(self) -> dict[int, dict[int, Decimal]]:
-        """按 ex-date 前的股数固定领取资格。同日拆股或收到的新证券不能改变旧股资格。"""
+        """Fix eligibility on pre-ex-date shares. Same-day splits or newly received securities cannot change the old shares' eligibility."""
         by_security: dict[int, dict[int, Decimal]] = {}
         for lot in self.lots.values():
             by_security.setdefault(lot.permno, {})[lot.id] = lot.shares
@@ -190,7 +190,7 @@ class Ledger:
 
     def receive(self, day: date, permno: int, shares: Decimal, basis: Decimal | None,
                 holding_start: date, reference: str, *, prior_periods: Periods | None = None) -> Lot:
-        """按已核实的条款登记被动取得的股票，例如 spin-off 分得的子公司股票。"""
+        """Register passively acquired stock under verified terms, e.g. subsidiary shares received in a spin-off."""
         if shares <= 0 or (basis is not None and basis < 0):
             raise ValueError("Invalid share entitlement or basis.")
         periods = ((holding_start, day),) if prior_periods is None else prior_periods
@@ -218,7 +218,7 @@ class Ledger:
     def sell(self, day: date, permno: int, allocations: Mapping[int, Decimal | Fraction], price: Decimal,
              fees: dict[int, Decimal], reason: str, *, event_id: str | None = None,
              price_source: str | None = None, price_day: date | None = None) -> list[Sale]:
-        """调用方明确指定每个 lot 的股数和费用；先校验整单，再一次性记账。"""
+        """The caller specifies shares and fees for each lot; validate the whole order first, then post it at once."""
         if reason not in {"TRADE", "PRE_DELISTING_EXIT", "CASH_ACQUISITION", "CASH_IN_LIEU", "LIQUIDATION"}:
             raise ValueError(f"Unknown sale reason: {reason}")
         if not allocations or allocations.keys() != fees.keys() or price < 0:
@@ -232,7 +232,7 @@ class Ledger:
             raise ValueError(f"Unknown trading lot {min(missing)} for {permno}. Use the trading lot ID for a bound segment.")
         is_cil = reason == "CASH_IN_LIEU"
         weights = {i: [lot.units for lot in groups[i]] for i in allocations}
-        # CIL 可能卖出 1/3 股。先确定留下的整股，再将其投影到账本的 Decimal 股数。
+        # CIL may sell 1/3 share. Determine the whole shares kept first, then project them onto the ledger's Decimal shares.
         retained = share_increments(sum(weights[i]) - Fraction(q) for i, q in allocations.items())
         sales = []
         sources = {}
@@ -243,7 +243,7 @@ class Ledger:
             sizes_before = weights[trading_id]
             held = sum(sizes_before)
             quantity = Fraction(requested)
-            # 卖完一批的账面尾数时，留下的整股数唯一，用它还原精确卖量。
+            # When a lot's book remainder is sold out, the whole shares kept are unique and are used to recover the exact quantity sold.
             remaining = Fraction(sum_shares(lot.shares for lot in parts)) - quantity
             if not is_cil and remaining.denominator == 1:
                 quantity = held - remaining
@@ -258,7 +258,7 @@ class Ledger:
             else:
                 booked = requested if isinstance(requested, Decimal) else as_decimal(Fraction(requested))
                 sizes = [lot.shares for lot in parts] if quantity == held else apportion(booked, sizes_before)
-            # 先按可交易 ID 校验整股，再把同一次成交归到各自的税务明细。
+            # Validate whole shares by tradable ID first, then assign the same fill to each tax record.
             for lot, size, units_before, charge in zip(parts, sizes, sizes_before, apportion(fees[trading_id], sizes_before)):
                 segment_fees[lot.id] = charge
                 sources[lot.id] = copy(lot)
@@ -274,7 +274,7 @@ class Ledger:
                 if is_cil and sold_fraction < 1 and lot.basis is not None:
                     partial_cil = sales[-1]
 
-        # 券商对整笔交易收付款。若逐段金额确有尾差，部分 CIL 的回款与 basis 同额调整。
+        # The broker settles the trade as a whole. If per-segment amounts have a rounding difference, partial CIL proceeds and basis are adjusted by the same amount.
         net = as_decimal(sum(map(Fraction, allocations.values())) * Fraction(price)) - sum(fees.values(), ZERO)
         residual = sum_shares((net, *(s.proceeds.copy_negate() for s in sales)))
         if residual:
@@ -323,7 +323,7 @@ class Ledger:
         old_sizes = {l.id: exact_shares.get(l.id, l.units) for parts in groups.values() for l in parts}
         new_sizes = {i: size * factor for i, size in old_sizes.items()}
         if dividend_entitlements is not None:
-            # 股票股息只发给前收盘的持仓。同日从其他股类分来的新股没有这次领取资格。
+            # Stock dividends go only to previous-close holdings. New shares distributed from other share classes the same day are not eligible.
             for i, size in old_sizes.items():
                 eligible = dividend_entitlements.get(i, ZERO)
                 if eligible != self.lots[i].shares:
@@ -371,7 +371,7 @@ class Ledger:
                 continue
             reduction = min(lot.basis, payment)
             lot.basis -= reduction
-            # 超过本批次剩余 basis 的部分是 capital gain，实际股数不变。
+            # Any amount above the lot's remaining basis is a capital gain; actual shares are unchanged.
             if payment > reduction:
                 self.sales.append(Sale(day, lot.id, permno, ZERO, payment - reduction,
                                        ZERO, lot.holding_start, "ROC_EXCESS", event_id=event_id,
@@ -387,7 +387,7 @@ class Ledger:
         return self.cash + sum((q * closes[p] for p, q in positions.items()), ZERO) + receivable
 
     def tax_year(self, year: int, *, basis_verified: bool, wash_reviewed: bool | None = None) -> TaxYear:
-        """兼容旧的 wash_reviewed 参数。应税损益按实际配对，定稿日期由 settle_years 判断。"""
+        """Accepts the old wash_reviewed argument. Taxable gains follow actual matches; finality is decided by settle_years."""
         sales = [s for s in self.sales if s.day.year == year]
         known = [s for s in sales if s.basis is not None]
         st = sum((s.taxable_gain for s in known if not s.is_long_term), ZERO)

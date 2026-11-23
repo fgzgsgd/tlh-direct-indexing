@@ -1,4 +1,4 @@
-"""单个应税账户按 PERMNO 和股数匹配 wash sale。匹配只改变税账。"""
+"""Match wash sales by PERMNO and shares in a single taxable account. Matching changes only the tax books."""
 
 from collections import deque
 from dataclasses import dataclass, replace
@@ -14,15 +14,15 @@ if TYPE_CHECKING:
 
 
 WINDOW = timedelta(days=30)
-Periods = tuple[tuple[date, date], ...]  # 每段不计买入日，计卖出日。
+Periods = tuple[tuple[date, date], ...]  # Each period excludes the purchase date and includes the sale date.
 
 
 @dataclass
 class OpenLoss:
     sale: "Sale"
     origin: int | None
-    shares: Fraction      # 与当前交易单位一致，拆股时精确换算。
-    remaining: Decimal    # 尚可递延的美元损失，拆股时不变。
+    shares: Fraction      # In current trading units, converted exactly on splits.
+    remaining: Decimal    # Dollar loss still deferrable, unchanged by splits.
     periods: Periods
     unverified_splits: tuple[str, ...] = ()
 
@@ -40,7 +40,7 @@ class WashMatch:
 
 
 def _before(periods: Periods, acquired: date) -> Periods:
-    """只承接新买入日之前实际持有的日期，合并重叠期间，保留空仓间隔。"""
+    """Carry over only days actually held before the new purchase date, merging overlaps and keeping flat gaps."""
     merged = []
     for start, end in sorted(periods):
         end = min(end, acquired)
@@ -85,13 +85,13 @@ def _apply_match(book: "Ledger", loss: OpenLoss, matched: "Lot") -> None:
 
 
 def _match(book: "Ledger", loss: OpenLoss, lot: "Lot") -> list["Lot"]:
-    """匹配整股和尾数，返回这笔买入还可匹配的部分。"""
+    """Match whole shares and the remainder; return the part of this purchase still available for matching."""
     units = min(loss.shares, lot.units)
     whole, tail = divmod(units, 1)
     if tail and lot.bound_lot_id is None and whole < int(lot.units):
         if whole:
             _apply_match(book, loss, _portion(book, lot, Fraction(whole)))
-        # 当前这一股保留原 ID，下一笔亏损可接着匹配它的余额。其余整股仍独立。
+        # The current share keeps its original ID so the next loss can match its remaining balance. Other whole shares stay separate.
         remaining = lot.units - 1
         untouched = [_portion(book, lot, remaining)] if remaining else []
         lot.bound_lot_id = lot.id
@@ -106,7 +106,7 @@ def on_sale(book: "Ledger", sale: "Sale", source: "Lot") -> None:
         return
     periods = source.prior_periods + ((source.acquired, sale.day),)
     loss = OpenLoss(sale, source.origin, sale.exact_shares or Fraction(sale.shares), -sale.gain, periods)
-    # 本次卖出的各批已全部扣除，只检查仍持有、且没有匹配过的独立买入。
+    # All lots sold in this trade have been removed; check only independent purchases still held and not yet matched.
     candidates = (lot for lot in book.lots.values() if lot.permno == sale.permno
                   and lot.origin is not None and lot.origin != source.origin and not lot.wash_used
                   and sale.day - WINDOW <= lot.acquired <= sale.day)
