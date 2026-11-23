@@ -19,7 +19,7 @@ Tax alpha is the reduction in tax drag (after-tax minus pre-tax CAGR) against a 
 
 Each month-end the optimizer chooses target weights that minimize estimated tax plus trading cost, subject to long-only, fully invested and 1% ex-ante tracking-error constraints. It makes no return forecasts.
 
-1. **Step 1, direction search.** SLSQP from three starting portfolios on a wash-sale-adjusted objective. Every stock holding a loss lot is labeled BUY, SELL or HOLD; up to three distinct direction patterns are kept.
+1. **Step 1, direction search.** SLSQP from three starting portfolios on a wash-sale-adjusted objective. Every stock holding a loss lot is labeled BUY, SELL or HOLD. Up to three distinct direction patterns are kept.
 2. **Step 2, lot-level refinement.** With directions fixed the problem is a convex second-order cone program, solved with CVXPY/Clarabel. The pattern with the lowest cost is traded.
 3. **Execution.** Targets are floored to whole shares, sale lots are chosen least-tax-first-out (LTFO), and orders fill at the next trading day's close.
 
