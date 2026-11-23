@@ -1,0 +1,36 @@
+\section{Conclusions}
+\label{sec:conclusions}
+
+\subsection{Pros and Cons of Direct Indexing}
+\label{sec:proscons}
+
+Direct indexing stays close to the index. Our portfolio tracked the S\&P 500 TR with 1.24\% realized tracking error and drawdowns in line with the index, so it delivers market exposure with little active risk. This makes it suitable for the large pool of risk-averse investors who want index returns rather than active bets.
+
+The strategy also has large capacity. It holds liquid S\&P 500 stocks, trades once a month and does not rely on return forecasts that weaken as assets grow. Its edge comes from each investor's own tax lots, so the same process can run across many separate accounts without crowding.
+
+Owning the stocks directly is what makes harvesting at scale possible. An ETF investor can harvest only when the fund itself trades below cost, which rarely happens after a few years of rising markets. A direct-indexing account holds hundreds of positions and thousands of lots, and individual stocks diverge widely even when the index rises.
+
+The first cost is tracking error. To harvest a loss, the strategy sells a stock and replaces its exposure with other names, which pulls the portfolio away from benchmark weights. Realized tracking error was 1.24\%, against 0.50\% for the No-TLH account that simply replicates SPY, and the average number of holdings fell to 411 from about 503.
+
+The second cost is operational complexity. Every lot must be tracked with its own basis and holding period, every sale checked against purchases within 30 days on either side, and every corporate action applied lot by lot. Execution is harder too. Each rebalance trades hundreds of stocks at once, and liquidity, bid-ask spreads and trading halts differ widely between the largest companies and the smallest index members, so a single order schedule does not fit every name.
+\subsection{Value for Investors}
+\label{sec:value}
+
+For investors, the value of direct indexing is a lower tax bill on the same market exposure. Over the decade the strategy added 0.75\% a year of tax alpha against an account that holds the same stocks without harvesting. 
+
+Much of this benefit is a deferral rather than a permanent saving. Harvested losses lower the basis of the replacement shares, so the tax deferred today is paid when those shares are eventually sold. A deferral still has value, because the saved tax stays invested and compounds. For an investor who already plans to hold for the long term, harvesting also earns a rate difference. 
+
+The value is therefore highest for a specific investor: one who pays top marginal rates, has outside capital gains to offset each year, holds for a long horizon, and adds new money regularly. New contributions create fresh lots near cost, which slows the aging described in Section~\ref{sec:aging}. For an investor with few outside gains, or one who expects to liquidate soon, much of the benefit is lost.
+
+\subsection{Risks and Limitations}
+\label{sec:limitations}
+
+\textbf{Data.} Index weights come from SPY holdings rather than point-in-time S\&P 500 weights. SPY tracks the index closely, but its weights can differ slightly around index changes, and its month-end holdings are assumed known at that day's close. Exits ahead of delistings use dates that were not known in advance, which spares the backtest trading problems a live portfolio would face. Survivorship bias is limited because each month's universe is the historical SPY holding list, including companies later removed or delisted.
+
+\textbf{Tax assumptions.} The largest assumption is that losses offset outside gains in full every year. Without such gains, net losses beyond \$3{,}000 a year would be carried forward, and the tax alpha would be smaller and arrive later. All gains are taxed at top federal rates with no state tax, so investors in other brackets or high-tax states would see different results. Terminal wealth does not deduct tax on unrealized gains. Finally, the simulation uses raw prices and models corporate actions directly, but cash in lieu, rights distributions and similar events are simplified and may be taxed differently in practice.
+
+\textbf{Backtest.} Results come from a single ten-year path, and the start date matters. The portfolio was bought just before the early-2016 sell-off, which produced the largest tax alpha of any year. Trades fill at the closing price with a flat 5 bp cost. The backtest ignores slippage, the bid-ask spread and market impact, which would raise the cost of heavy trading.
+
+\textbf{Strategy.} The optimizer is myopic. It solves each monthly rebalance on its own and ignores how today's trades change future harvesting opportunities and future tax. Selling a loss today, for example, lowers the basis of the replacement shares and raises the tax on their later sale. The result is therefore not optimal over the whole horizon, and within each rebalance Step~1 is a local search with no global-optimality guarantee. The risk model is also imperfect: realized tracking error ran above the ex-ante limit in nine of ten years, and active risk moved pre-tax returns by as much as 4.8\% in a single year.
+
+\textbf{Portfolio aging and wash sales.} Tax alpha fell as embedded gains grew after a few years, and the backtest cannot separate aging from market conditions. The wash-sale rule deferred 19\% of harvested losses. Most were released within months, but the Step~1 penalty only discourages trades that trigger the rule and does not prevent them.

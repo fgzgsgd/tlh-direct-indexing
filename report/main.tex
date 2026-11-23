@@ -1,0 +1,105 @@
+% Layout uses only packages present in the local TinyTeX install:
+% psnfss (mathptmx, helvet), geometry, amsmath/amssymb, xcolor, booktabs,
+% tools (array, tabularx), natbib, hyperref.
+\documentclass[11pt,letterpaper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{mathptmx}
+\DeclareSymbolFont{symbols}{OMS}{cmsy}{m}{n}
+\DeclareMathAlphabet{\mathcal}{OMS}{cmsy}{m}{n}
+\usepackage[scaled=0.90]{helvet}
+\usepackage[margin=0.9in,headsep=12pt,footskip=24pt]{geometry}
+\usepackage{xcolor}
+\usepackage{booktabs,array,tabularx}
+\usepackage{graphicx}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[colorlinks=true,linkcolor=navy,citecolor=navy,urlcolor=navy]{hyperref}
+\urlstyle{same}
+
+% ---------------------------------------------------------------- colours
+\definecolor{navy}{HTML}{1F3A5F}
+\definecolor{slate}{HTML}{5B6770}
+\definecolor{tint}{HTML}{E9EEF4}
+\definecolor{rulegray}{HTML}{B8C2CC}
+
+% ---------------------------------------------------------------- spacing
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+\linespread{1.02}
+\setlength{\intextsep}{10pt}
+\setlength{\textfloatsep}{12pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{4pt}
+
+\makeatletter
+% Keep headings with their first lines (needspace logic; package not in TinyTeX).
+\newcommand{\needspace}[1]{\par\penalty-100\begingroup\setlength{\dimen@}{#1}%
+  \dimen@ii\pagegoal\advance\dimen@ii-\pagetotal
+  \ifdim\dimen@>\dimen@ii\ifdim\dimen@ii>\z@\vfil\fi\break\fi\endgroup}
+% Section headings: sans serif, black, numbered.
+\renewcommand{\section}{\needspace{7\baselineskip}\@startsection{section}{1}{0pt}%
+  {-2.0ex plus -.4ex minus -.2ex}{0.8ex plus .2ex}%
+  {\sffamily\Large\bfseries\color{black}}}
+\renewcommand{\subsection}{\needspace{5\baselineskip}\@startsection{subsection}{2}{0pt}%
+  {-1.6ex plus -.3ex minus -.2ex}{0.5ex plus .1ex}%
+  {\sffamily\normalsize\bfseries\color{black}}}
+
+% Captions: "Table 1  Title" in sans; tables captioned above, figures below.
+\long\def\@makecaption#1#2{%
+  \vskip\abovecaptionskip
+  {\sffamily\small{\bfseries\color{black}#1}\enspace #2\par}%
+  \vskip\belowcaptionskip}
+\renewcommand{\fnum@table}{Table~\thetable}
+\renewcommand{\fnum@figure}{Figure~\thefigure}
+
+% Running header and footer without extra packages.
+\def\ps@report{%
+  \def\@oddhead{\hfil{\sffamily\footnotesize\color{slate}Direct Indexing with Tax-Loss Harvesting}}%
+  \let\@evenhead\@oddhead
+  \def\@oddfoot{\hfil{\sffamily\footnotesize\color{slate}\thepage}\hfil}%
+  \let\@evenfoot\@oddfoot}
+\def\ps@firstpage{\let\@oddhead\@empty\let\@evenhead\@empty
+  \def\@oddfoot{\hfil{\sffamily\footnotesize\color{slate}\thepage}\hfil}\let\@evenfoot\@oddfoot}
+\makeatother
+\pagestyle{report}
+
+% Run-in finding headers inside subsections.
+\newcommand{\lead}[1]{{\sffamily\bfseries\color{black}#1}\enspace}
+% Compact lists without enumitem.
+\newenvironment{tightitems}{\begin{list}{\textcolor{navy}{\small$\blacktriangleright$}}{%
+  \setlength{\leftmargin}{1.3em}\setlength{\labelwidth}{1em}\setlength{\labelsep}{0.4em}%
+  \setlength{\itemsep}{0.15em}\setlength{\parsep}{0pt}\setlength{\topsep}{0.2em}}}{\end{list}}
+
+\renewcommand{\arraystretch}{1.18}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+\thispagestyle{firstpage}
+\setlength{\abovedisplayskip}{6pt}
+\setlength{\belowdisplayskip}{6pt}
+\setlength{\abovedisplayshortskip}{3pt}
+\setlength{\belowdisplayshortskip}{4pt}
+
+% ---------------------------------------------------------------- title block
+\begingroup\sffamily
+{\LARGE\bfseries Direct Indexing with Tax-Loss Harvesting\par}
+\vspace{5pt}
+{\large\color{slate}A Two-Step Tax- and Wash-Sale-Aware Optimization Strategy on the S\&P~500\par}
+\vspace{10pt}
+{\normalsize\bfseries Long Qian\par}
+\vspace{1pt}
+{\small\color{slate}November 2026\par}
+\endgroup
+\vspace{6pt}
+{\color{black}\rule{\linewidth}{0.8pt}}
+\vspace{4pt}
+
+\input{sections/background}
+\input{sections/methodology}
+\input{sections/results}
+\input{sections/conclusions}
+\input{sections/nextsteps}
+\input{sections/aitools}
+
+\end{document}

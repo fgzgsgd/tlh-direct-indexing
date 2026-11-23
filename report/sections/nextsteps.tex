@@ -1,0 +1,18 @@
+\section{Next Steps}
+\label{sec:next}
+
+\textbf{A more exact, convex formulation.} A more accurate convex objective might let the optimizer solve the problem directly instead of searching for directions. For example, with purchases and lot sales as separate variables the costs become linear, and the remaining no-buy-and-sell rule can be handled with one binary variable per loss stock. The result is a mixed-integer SOCP that a commercial solver may solve to global optimality.
+
+\textbf{Multi-period optimization.} The current optimizer looks only at the next rebalance. Optimizing several future rebalances on simulated return paths, or training a reinforcement-learning agent, might help weigh a harvest today against the higher tax on lower-basis replacement shares later.
+
+\textbf{Wash-sale-aware constraints.} Another direction is to search for better solutions that do not trigger wash sales at all. Step~2 might forbid the trade direction that would trigger the rule, which keeps it convex, while a highly correlated substitute holds the exposure until the window closes.
+
+\textbf{Harvesting frequency.} Monthly rebalancing misses losses that appear and recover within the month. A daily or weekly loss scan between rebalances is a simple way to test how much of this short-lived opportunity can be captured.
+
+\textbf{Gain realization against aging.} Realizing some long-term gains on purpose may slow portfolio aging. One option is to sell the most appreciated lots up to the amount of losses harvested in the same year, resetting the cost basis at little tax cost.
+
+\textbf{Tighter control of tracking error.} Realized tracking error ran above the ex-ante limit. A convex penalty on the size of position changes, combined with a slightly lower ex-ante limit, may bring it closer to 1\%.
+
+\textbf{Cash flows.} Regular contributions add new lots near cost. Simulating them, along with withdrawals, may show how far new money can slow the decline in tax alpha.
+
+\textbf{Calibration of $\gamma$.} The choice of $\gamma=0.5$ deserves an empirical check. Rerunning the backtest over a grid of $\gamma$ between 0.25 and 1 and several tracking-error limits might map the trade-off between tax alpha and tracking error.

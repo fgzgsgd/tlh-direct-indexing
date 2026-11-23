@@ -1,0 +1,111 @@
+% Final strategy: outputs/ltfo_wash_a_det200_20261122_v3. Table 2 from results/decisions.jsonl.
+\section{Methodology}
+\label{sec:methodology}
+
+The strategy holds S\&P~500 stocks directly and rebalances once a month. At each month-end close $t$, it sets target weights that minimize estimated tax plus trading cost while keeping ex-ante tracking error (TE) against the index below 1\%. 
+
+Figure~\ref{fig:pipeline} shows the four stages. The optimizer reads current holdings, tax lots, and benchmark weights (Stage~1). It solves for target weights in two steps (Stage~2): first it decides whether to buy, sell or hold each stock with an unrealized loss, then it sizes all trades. Each sale relieves the lots with the lowest tax cost first (Stage~3), and orders execute at the next trading day's close (Stage~4). Sections~\ref{sec:data}--\ref{sec:tax} describe each part.
+
+\begin{figure}[!h]
+\centering
+\newcommand{\stepbox}[2]{\fcolorbox{rulegray}{tint}{\parbox[t]{0.200\linewidth}{%
+  \centering\sffamily{\tiny\bfseries\color{slate}#1\par}\vspace{2pt}
+  \parbox[c][0.85cm][c]{\linewidth}{\centering\footnotesize\bfseries\color{black}#2}}}}
+\newcommand{\steparrow}{\raisebox{-0.62cm}{\textcolor{navy}{$\boldsymbol{\rightarrow}$}}}
+\setlength{\fboxsep}{5pt}%
+\stepbox{STAGE 1 \,\textbar\, MONTH-END \textit{t}}{Weights / Tax Lots Input}%
+\hfill\steparrow\hfill
+\stepbox{STAGE 2 \,\textbar\, MONTH-END \textit{t}}{2-step Tax-aware Optimization}%
+\hfill\steparrow\hfill
+\stepbox{STAGE 3 \,\textbar\, MONTH-END \textit{t}}{Least-Tax-First-Out (LTFO)}%
+\hfill\steparrow\hfill
+\stepbox{STAGE 4 \,\textbar\, \textit{t}\,+\,1}{Execution}
+\caption{Monthly rebalance process.}
+\label{fig:pipeline}
+\end{figure}
+
+% ======================================================================
+\subsection{Universe, Data and Timing}
+\label{sec:data}
+
+The backtest starts with \$1 million in cash in January 2016 and rebalances monthly through December 2025 (Table~\ref{tab:setup}). Because of non-accessibility to point-in-time S\&P~500 constituent weights, the universe and reference weights $b$ come from the month-end equity holdings of SPY, which fully replicates the index. Each month, targets are set with prices at the month-end close $t$ and traded at the next trading day's close $t{+}1$. Prices, total returns, dividends and corporate actions come from CRSP.
+
+\begin{table}[!h]
+\caption{Backtest specification}
+\label{tab:setup}
+\small
+\begin{tabularx}{\linewidth}{@{}>{\leavevmode\sffamily\bfseries\color{black}}p{0.17\linewidth}L@{}}
+\toprule
+Time & Jan.~2016 -- Dec.~2025, 120 monthly rebalances \\
+Initial Cash & \$1 million \\
+Universe & Month-end SPY equity holdings (about 505 stocks), weights rescaled to 100\% \\
+Benchmark & S\&P 500 Total Return Index \\
+Timing & Optimize at month-end close, trade at the next trading day's close \\
+Data & CRSP daily prices, total returns and corporate actions (WRDS) \\
+Costs & 5 bp per side, no market impact, cash earns zero \\
+Tax Rates & Short-term 40.8\%, long-term 23.8\%, dividends 23.8\% \\
+Liquidation & No \\
+Tax Settlement & Net annual tax paid from, or refunded to, the cash account on the first trading day of the next year, and refunds can be reinvested \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Two simplifications introduce mild look-ahead: SPY's month-end holdings are assumed known at that day's close, and stocks about to be delisted are sold in advance using their known delisting date.
+
+% ======================================================================
+\subsection{Two-Step Tax-Aware Optimization}
+\label{sec:optimization}
+
+\lead{Objective.} Each month the two optimization steps choose target weights $w$ to minimize estimated tax benefits (differently defined in each step) plus trading cost, subject to long-only, fully invested and tracking-error constraints:
+\begin{equation}
+  \min_w\ J(w)=\frac{\gamma\,\mathrm{Tax}(w)+\mathrm{TC}(w)}{V}
+  \qquad\text{s.t.}\quad w\ge0,\quad \mathbf 1^\top w=1,\quad \sqrt{(w-b)^\top\widehat\Sigma\,(w-b)}\le1\%,
+  \label{eq:problem}
+\end{equation}
+where $V$ is portfolio value, $b$ the benchmark weights and $\widehat\Sigma$ a Ledoit--Wolf covariance from 252 daily returns. Stocks with shorter histories are held at benchmark weight. The transaction cost term is
+\begin{equation}
+  \widehat T(w)=\sum_\ell \tau_\ell\big[(1-c)P_{i(\ell)}-k_\ell\big]\,s_\ell(w),
+  \qquad
+  \mathrm{TC}(w)=c\sum_i\big|Vw_i-P_iq_i\big|,
+  \label{eq:costs}
+\end{equation}
+where $s_\ell(w)$ is the number of shares sold from lot $\ell$, $k_\ell$ its per-share basis, $\tau_\ell$ the short- or long-term rate, $P_i$ the price, $q_i$ the shares held and $c=5$~bp. Lots with a loss contribute negative tax. Sales follow least-tax-first-out (LTFO): lots with the lowest tax per share are sold first. $\gamma$ is set to 0.5.
+
+\lead{Why two steps.} For a stock holding a loss lot, estimated tax rises with $w_i$ up to the current weight and is flat above it. This kink makes \eqref{eq:problem} nonconvex. Fixing each such stock's trade direction removes the kink and leaves a convex problem (Moehle, Kochenderfer, Boyd and Ang, 2021).
+
+\lead{Step 1: choose trade directions.} A local solver (SLSQP) searches \eqref{eq:problem} with tax adjusted for the 30-day wash-sale rule:
+\begin{equation}
+  \min_w\ J_1(w)=\frac{\gamma\big[\widehat T(w)+D_{\mathrm{sell}}(w)+D_{\mathrm{buy}}(w)\big]+\mathrm{TC}(w)}{V}
+  \qquad\text{s.t. the constraints of \eqref{eq:problem}}.
+  \label{eq:stage1}
+\end{equation}
+$D_{\mathrm{sell}}$ adds back the saving from a loss sale that matches shares bought in the past 30 days. $D_{\mathrm{buy}}$ adds back the saving from a past loss that a new purchase would disallow. Each stock with a loss lot is then labeled BUY, SELL or HOLD, and up to three distinct direction patterns are kept.
+
+\lead{Step 2: size the trades.} For each direction pattern, the optimizer solves
+\begin{equation}
+\begin{aligned}
+  \min_w\ \ & J_2(w)=\frac{\gamma\,\widehat T(w)+\mathrm{TC}(w)}{V}\\
+  \text{s.t.}\ \ & \text{the constraints of \eqref{eq:problem}},\qquad
+  w_i\ge h_i\ (\text{BUY}),\quad w_i\le h_i\ (\text{SELL}),\quad w_i=h_i\ (\text{HOLD}),
+\end{aligned}
+  \label{eq:stage2}
+\end{equation}
+where $h_i=P_iq_i/V$ is the current weight of loss stock $i$. This is a convex second-order cone program in weights and lot-level sales, solved to global optimality (CVXPY/Clarabel) for each pattern, and the pattern with the lowest $J_2$ is traded. The wash-sale terms are left out to keep Step~2 convex, so they influence directions only. Actual wash sales are booked by the tax ledger.
+
+
+
+% ======================================================================
+\subsection{Lot Selection and Execution}
+\label{sec:execution}
+
+Target holdings are rounded down to whole shares. Sale lots are chosen by LTFO, and orders fill at the next day's close: sales first, then any tax payment or refund, then purchases. There is no borrowing.
+
+% ======================================================================
+\subsection{Tax Accounting}
+\label{sec:tax}
+
+A tax-lot ledger records each lot's purchase date, shares and basis. A loss is disallowed when the same stock is bought within 30 days before or after the sale. The loss is added to the replacement lot's basis. Realized losses are assumed to offset outside gains in full each year. Annual tax is
+\begin{equation}
+  \mathcal T_y=0.408\,\big(G^{\mathrm{ST}}_y-L^{\mathrm{ST}}_y\big)+0.238\,\big(G^{\mathrm{LT}}_y-L^{\mathrm{LT}}_y\big)+0.238\,\mathit{Div}_y,
+\end{equation}
+where $G_y$ and $L_y$ are realized gains and recognized losses in year $y$, short-term (ST) or long-term (LT), with wash-sale losses excluded from $L_y$. $\mathit{Div}_y$ is dividends received. A negative $\mathcal T_y$ is a refund. Tax is paid, or refunded, on the first trading day of the next year.

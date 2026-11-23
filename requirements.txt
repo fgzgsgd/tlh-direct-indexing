@@ -1,0 +1,12 @@
+# The tax-lot ledger and backtest engine (tlh/) use only the standard library.
+# These packages are needed for the optimizer, the report figures and the tests.
+numpy==2.5.5
+scipy==1.18.1
+scikit-learn==1.9.1
+cvxpy==1.9.3
+clarabel==0.11.1
+joblib==1.6.0
+threadpoolctl==3.8.0
+cloudpickle
+pandas
+matplotlib

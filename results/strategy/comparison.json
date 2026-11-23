@@ -1,0 +1,296 @@
+{
+  "metrics": {
+    "no_tlh": {
+      "pretax_cagr": 0.14772483651013196,
+      "aftertax_cagr": 0.14214967637414636,
+      "aftertax_wealth": 3773018.394468613,
+      "tax_alpha_cagr_bp": 0.0,
+      "gross_loss": 65017.812489250464,
+      "recognized_loss": 61606.12635516806,
+      "wash_deferred": 3411.6861340824034,
+      "wash_share_of_gross_loss": 0.05247309934714375,
+      "net_tax": 98715.2131194271,
+      "fees": 1198.02635,
+      "ending_unrealized_gain": 2460131.6225446775,
+      "tax_final": "False",
+      "max_drawdown": -0.3311409531460483,
+      "realized_te": {
+        "sp500_tr": 0.005024666038457167,
+        "spy_adj_close": 0.009961655252550607,
+        "spy_market": 0.009955744742607318,
+        "spy_nav": 0.003720173218191231
+      },
+      "source": "/Users/ivan/Documents/ChatGPT/Invesco/outputs/two_stage_ltfo_comparison_20261122/no_tlh_ltfo"
+    },
+    "no_tlh_hifo": {
+      "pretax_cagr": 0.1477243416471319,
+      "aftertax_cagr": 0.14213403979065495,
+      "aftertax_wealth": 3772502.3660751004,
+      "tax_alpha_cagr_bp": -0.15141720491338584,
+      "gross_loss": 65093.59381053841,
+      "recognized_loss": 61649.366413393946,
+      "wash_deferred": 3444.227397144466,
+      "wash_share_of_gross_loss": 0.05291192566766622,
+      "net_tax": 98993.84418293973,
+      "fees": 1198.66098,
+      "ending_unrealized_gain": 2460532.3370423634,
+      "tax_final": "False",
+      "max_drawdown": -0.33115027936066116,
+      "realized_te": {
+        "sp500_tr": 0.005023183338367863,
+        "spy_adj_close": 0.009962354416515481,
+        "spy_market": 0.00995644997071028,
+        "spy_nav": 0.0037183717694961016
+      },
+      "source": "/Users/ivan/Documents/ChatGPT/Invesco/outputs/two_stage_ltfo_comparison_20261122/no_tlh_hifo"
+    },
+    "det200": {
+      "pretax_cagr": 0.15573627794249606,
+      "aftertax_cagr": 0.15706038616062207,
+      "aftertax_wealth": 4295029.39224036,
+      "tax_alpha_cagr_bp": 68.99268354111635,
+      "gross_loss": 470919.6323573435,
+      "recognized_loss": 387040.68235550355,
+      "wash_deferred": 83878.95000183994,
+      "wash_share_of_gross_loss": 0.17811733518510622,
+      "net_tax": 23942.00606611019,
+      "fees": 7095.4349,
+      "ending_unrealized_gain": 3019978.4214805006,
+      "tax_final": "False",
+      "max_drawdown": -0.3344182208846793,
+      "realized_te": {
+        "sp500_tr": 0.012403824345223266,
+        "spy_market": 0.01606525144413084
+      },
+      "source": "/Users/ivan/Documents/ChatGPT/Invesco/outputs/ltfo_det200_full_2016_2025/results"
+    },
+    "wash_A": {
+      "pretax_cagr": 0.15755318522962983,
+      "aftertax_cagr": 0.15947022779982156,
+      "aftertax_wealth": 4385240.657412511,
+      "tax_alpha_cagr_bp": 74.92202706177343,
+      "gross_loss": 489252.0227498135,
+      "recognized_loss": 396357.10077790107,
+      "wash_deferred": 92894.92197191248,
+      "wash_share_of_gross_loss": 0.18987130896220275,
+      "net_tax": 12926.702580354038,
+      "fees": 7133.3873175,
+      "ending_unrealized_gain": 3129354.001260321,
+      "tax_final": "False",
+      "max_drawdown": -0.33700305989252755,
+      "realized_te": {
+        "sp500_tr": 0.012391898301386971,
+        "spy_market": 0.016140734014827185
+      },
+      "source": "/Users/ivan/Documents/ChatGPT/Invesco/outputs/ltfo_wash_a_det200_20261122_v3/results"
+    }
+  },
+  "annual": [
+    {
+      "year": 2016,
+      "det200": {
+        "pretax_return": 0.11798675866150667,
+        "aftertax_return": 0.14763653751481975,
+        "wash_deferred": 26675.290464100046,
+        "net_tax": -29649.7788533131,
+        "tax_alpha_bp": 363.4829812315126
+      },
+      "wash_A": {
+        "pretax_return": 0.12122736063618667,
+        "aftertax_return": 0.15091523847639426,
+        "wash_deferred": 27893.44031323694,
+        "net_tax": -29687.877840207606,
+        "tax_alpha_bp": 363.86397110045766
+      }
+    },
+    {
+      "year": 2017,
+      "det200": {
+        "pretax_return": 0.23185126303370737,
+        "aftertax_return": 0.22993488633876935,
+        "wash_deferred": 5476.833688043185,
+        "net_tax": 2199.303914752771,
+        "tax_alpha_bp": 45.593832668466455
+      },
+      "wash_A": {
+        "pretax_return": 0.2282365141689396,
+        "aftertax_return": 0.22676778732267347,
+        "wash_deferred": 4031.1496817028255,
+        "net_tax": 1690.3801085270995,
+        "tax_alpha_bp": 50.07033115518512
+      }
+    },
+    {
+      "year": 2018,
+      "det200": {
+        "pretax_return": -0.04799530019749533,
+        "aftertax_return": -0.04733281690015428,
+        "wash_deferred": 4722.005512072419,
+        "net_tax": -935.107240883973,
+        "tax_alpha_bp": 74.42506732244307
+      },
+      "wash_A": {
+        "pretax_return": -0.0443144628717238,
+        "aftertax_return": -0.04344406813874228,
+        "wash_deferred": 6412.362550825025,
+        "net_tax": -1228.9153199990037,
+        "tax_alpha_bp": 76.50418167884787
+      }
+    },
+    {
+      "year": 2019,
+      "det200": {
+        "pretax_return": 0.30409473928308123,
+        "aftertax_return": 0.3045196784504501,
+        "wash_deferred": 8418.608667240305,
+        "net_tax": -571.582293814023,
+        "tax_alpha_bp": 71.18511878066359
+      },
+      "wash_A": {
+        "pretax_return": 0.30488254563440165,
+        "aftertax_return": 0.3066716935125668,
+        "wash_deferred": 5468.2750339852755,
+        "net_tax": -2416.3540347289872,
+        "tax_alpha_bp": 84.82720588862655
+      }
+    },
+    {
+      "year": 2020,
+      "det200": {
+        "pretax_return": 0.19752710072780422,
+        "aftertax_return": 0.20228279643701602,
+        "wash_deferred": 8899.769985353994,
+        "net_tax": -8342.426428350673,
+        "tax_alpha_bp": 89.86541784569627
+      },
+      "wash_A": {
+        "pretax_return": 0.1891587122492953,
+        "aftertax_return": 0.1956515492425953,
+        "wash_deferred": 9974.127996300484,
+        "net_tax": -11458.217348838923,
+        "tax_alpha_bp": 107.23683068657829
+      }
+    },
+    {
+      "year": 2021,
+      "det200": {
+        "pretax_return": 0.29887151525327527,
+        "aftertax_return": 0.29130339284071305,
+        "wash_deferred": 2588.852435,
+        "net_tax": 15961.478139440582,
+        "tax_alpha_bp": -13.5515025712052
+      },
+      "wash_A": {
+        "pretax_return": 0.3000787775754349,
+        "aftertax_return": 0.2925673139403472,
+        "wash_deferred": 509.113695,
+        "net_tax": 15849.36095686273,
+        "tax_alpha_bp": -12.984914796459712
+      }
+    },
+    {
+      "year": 2022,
+      "det200": {
+        "pretax_return": -0.17391878843822167,
+        "aftertax_return": -0.1744462243502704,
+        "wash_deferred": 5723.893487207624,
+        "net_tax": 1436.4249771235166,
+        "tax_alpha_bp": 37.244899741835816
+      },
+      "wash_A": {
+        "pretax_return": -0.17187981538959993,
+        "aftertax_return": -0.17227644063368405,
+        "wash_deferred": 3510.207159301647,
+        "net_tax": 1081.7345697229364,
+        "tax_alpha_bp": 38.55300642148186
+      }
+    },
+    {
+      "year": 2023,
+      "det200": {
+        "pretax_return": 0.2705817097497617,
+        "aftertax_return": 0.26955473513667677,
+        "wash_deferred": 6465.845552822364,
+        "net_tax": 2308.970197549303,
+        "tax_alpha_bp": 37.78011339204653
+      },
+      "wash_A": {
+        "pretax_return": 0.27690122085682567,
+        "aftertax_return": 0.27763351020782445,
+        "wash_deferred": 17011.091923487533,
+        "net_tax": -1653.13527045698,
+        "tax_alpha_bp": 55.372753032883566
+      }
+    },
+    {
+      "year": 2024,
+      "det200": {
+        "pretax_return": 0.28844670744531475,
+        "aftertax_return": 0.2779383917711373,
+        "wash_deferred": 3362.573805,
+        "net_tax": 29994.605879749713,
+        "tax_alpha_bp": -55.007922821007554
+      },
+      "wash_A": {
+        "pretax_return": 0.2978811042711438,
+        "aftertax_return": 0.28801179467889043,
+        "wash_deferred": 6329.640733072757,
+        "net_tax": 28465.494975026526,
+        "tax_alpha_bp": -48.61786200176691
+      }
+    },
+    {
+      "year": 2025,
+      "det200": {
+        "pretax_return": 0.18062369390619712,
+        "aftertax_return": 0.17746003047464193,
+        "wash_deferred": 11545.276405,
+        "net_tax": 11540.11777385607,
+        "tax_alpha_bp": 11.281471560664457
+      },
+      "wash_A": {
+        "pretax_return": 0.18374047874439908,
+        "aftertax_return": 0.1804337680878545,
+        "wash_deferred": 11755.512885,
+        "net_tax": 12284.231784446245,
+        "tax_alpha_bp": 9.850999310770613
+      }
+    }
+  ],
+  "differences_A_minus_det200": {
+    "pretax_cagr": 0.0018169072871337677,
+    "aftertax_cagr": 0.002409841639199495,
+    "aftertax_wealth": 90211.26517215092,
+    "tax_alpha_cagr_bp": 5.929343520657085,
+    "wash_deferred": 9015.97197007254,
+    "net_tax": -11015.30348575615,
+    "fees": 37.95241749999968
+  },
+  "audit": {
+    "months": 120,
+    "all_monthly_checks_passed": true,
+    "source_unchanged": true,
+    "original_source_unchanged": true,
+    "input_metadata_unchanged": true,
+    "stage_two_status_counts": {
+      "optimal": 112,
+      "optimal_inaccurate": 8
+    },
+    "max_ledger_tax_error_usd": 9.094947017729282e-13,
+    "max_continuous_tax_error_usd": 9.094947017729282e-13,
+    "max_execution_tax_error_usd": 4.547473508864641e-13,
+    "orders_with_different_deliverable_lot_allocation": 9,
+    "deliverable_lot_allocation_difference_usd": 4.11532693537284,
+    "independently_checked_orders": 23383,
+    "max_continuous_te": 0.010000000000089902,
+    "repaired_candidate_winners": 74,
+    "candidate_rejections": 6
+  },
+  "notes": [
+    "Only first-stage candidate evaluation is wash-adjusted. Final direction selection still minimizes the original second-stage objective.",
+    "Tax alpha uses the passive LTFO control, consistent with the existing det200 comparison. External gains, continued holding, no terminal liquidation tax. HIFO control is also included.",
+    "Wash-deferred amounts are cumulative disallowances, not year-end outstanding balances.",
+    "The original split-tail deliverability rule can allocate different lots from continuous LTFO. Both tax calculations are independently audited using identical allocations.",
+    "Prior-year corporate-action provisional flags remain; future buys are not forecast or restricted."
+  ]
+}
